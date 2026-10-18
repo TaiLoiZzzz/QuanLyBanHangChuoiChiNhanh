@@ -45,8 +45,8 @@ SELECT
     tk.SoLuongTon,
     sp.GiaBanHienTai,
     (tk.SoLuongTon * sp.GiaBanHienTai) AS TongGiaTriTonKho,
-    -- Tính % lượng hàng món này chiếm trong tổng số lượng hàng của cả kho
-    ROUND(100.0 * tk.SoLuongTon / NULLIF(SUM(tk.SoLuongTon) OVER(PARTITION BY k.MaKho), 0), 2) AS TyTrongTonKhoPct,
+    -- Tính % lượng hàng món này chiếm trong tổng số lượng hàng của cả kho (ép kiểu DECIMAL(5,2) chuẩn hóa)
+    CAST(ROUND(100.0 * tk.SoLuongTon / NULLIF(SUM(tk.SoLuongTon) OVER(PARTITION BY k.MaKho), 0), 2) AS DECIMAL(5,2)) AS TyTrongTonKhoPct,
     -- Xếp hạng độ khan hiếm trong từng chi nhánh (Rank 1 = Sắp hết nhất)
     DENSE_RANK() OVER (
         PARTITION BY cn.MaCN 
@@ -66,7 +66,7 @@ INNER JOIN DanhMuc dm ON sp.MaDM = dm.MaDM
 WHERE sp.DaXoa = 0;
 GO
 
-PRINT N'✅ Đã tạo thành công VIEW 1: v_BaoCaoTonKho_XepHang';
+PRINT N'Da tao thanh cong VIEW 1: v_BaoCaoTonKho_XepHang';
 GO
 
 -- =========================================================================
@@ -95,7 +95,7 @@ LEFT JOIN NhanVien ql ON nv.MaQL = ql.MaNV
 WHERE nv.DaXoa = 0;
 GO
 
-PRINT N'✅ Đã tạo thành công VIEW 2: v_PhanCapNhanSu_ToanDien';
+PRINT N'Da tao thanh cong VIEW 2: v_PhanCapNhanSu_ToanDien';
 GO
 
 -- =========================================================================
@@ -117,7 +117,7 @@ WHERE MaCN = 1
 WITH CHECK OPTION; -- Cấm UPDATE/INSERT bản ghi có MaCN <> 1 qua View này!
 GO
 
-PRINT N'✅ Đã tạo thành công VIEW 3: v_NhanVien_ChiNhanh1_KiemSoat (WITH CHECK OPTION)';
+PRINT N'Da tao thanh cong VIEW 3: v_NhanVien_ChiNhanh1_KiemSoat (WITH CHECK OPTION)';
 GO
 
 -- =========================================================================
@@ -175,7 +175,7 @@ INNER JOIN ChiTietDonHang ct ON dh.MaDH = ct.MaDH
 INNER JOIN SanPham sp ON ct.MaSP = sp.MaSP;
 GO
 
-PRINT N'✅ Đã tạo thành công VIEW 4: v_InHoaDon_ChiTietPhucHop';
+PRINT N'Da tao thanh cong VIEW 4: v_InHoaDon_ChiTietPhucHop';
 GO
 
 -- =========================================================================
@@ -202,10 +202,10 @@ CREATE UNIQUE CLUSTERED INDEX IX_v_TongHopDoanhThuSanPham_MaSP
 ON v_TongHopDoanhThuSanPham(MaSP);
 GO
 
-PRINT N'✅ Đã tạo thành công VIEW 5: v_TongHopDoanhThuSanPham (INDEXED VIEW CÓ CLUSTERED INDEX)';
+PRINT N'Da tao thanh cong VIEW 5: v_TongHopDoanhThuSanPham (INDEXED VIEW CO CLUSTERED INDEX)';
 GO
 
 PRINT N'=========================================================================';
-PRINT N'🎯 HOÀN THÀNH TOÀN BỘ 5 VIEW CHUYÊN SÂU ĐẠT CHUẨN XUẤT SẮC CỦA CÔ THỂ!';
+PRINT N'HOAN THANH TOAN BO 5 VIEW CHUYEN SAU DAT CHUAN CUA CO THE!';
 PRINT N'=========================================================================';
 GO
