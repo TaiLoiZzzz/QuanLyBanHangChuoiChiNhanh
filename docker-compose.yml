@@ -1,0 +1,18 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver_dbms_cothe
+    user: root
+    restart: always
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=PasswordAdmin@2026
+      - MSSQL_PID=Developer
+    ports:
+      - "14333:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql/data
+
+volumes:
+  sqlserver_data:
+    driver: local
