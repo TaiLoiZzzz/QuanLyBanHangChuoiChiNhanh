@@ -83,12 +83,15 @@ GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.usp_Tx_XoaNhanVienVaDieuChuyenQuanLy TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.usp_Tx_ThangHangThanhVienHangLoat TO Role_QuanLyChiNhanh;
+GRANT SELECT ON ChiNhanh TO Role_QuanLyChiNhanh;
 GRANT SELECT ON KhoHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON TonKho TO Role_QuanLyChiNhanh;
 GRANT SELECT ON SanPham TO Role_QuanLyChiNhanh;
 GRANT SELECT ON DanhMuc TO Role_QuanLyChiNhanh;
 GRANT SELECT ON KhachHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON DonHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON ChiTietDonHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON NhatKyHeThong TO Role_QuanLyChiNhanh;
 -- DENY xem trực tiếp bảng lương nhạy cảm (bắt buộc xem qua View)
 DENY SELECT ON NhanVien TO Role_QuanLyChiNhanh;
 GO
@@ -105,6 +108,9 @@ GRANT EXECUTE ON dbo.fn_FormatMaHoaDonTuDong TO Role_ThuNgan;
 GRANT SELECT ON dbo.fn_DanhSachDonHangTheoKhoangThoiGian TO Role_ThuNgan;
 GRANT SELECT ON v_InHoaDon_ChiTietPhucHop TO Role_ThuNgan;
 GRANT SELECT, INSERT, UPDATE ON KhachHang TO Role_ThuNgan;
+GRANT SELECT ON ChiNhanh TO Role_ThuNgan;
+GRANT SELECT ON KhoHang TO Role_ThuNgan;
+GRANT SELECT ON TonKho TO Role_ThuNgan;
 GRANT SELECT ON SanPham TO Role_ThuNgan;
 GRANT SELECT ON DanhMuc TO Role_ThuNgan;
 GRANT SELECT ON DonHang TO Role_ThuNgan;
@@ -119,6 +125,7 @@ GO
 -- ROLE 4: THỦ KHO / STOCKKEEPER (HOÀNG GIA KIỆT - 20%)
 -- Được kiểm tra tồn kho, chuyển kho nội bộ và liên chi nhánh
 GRANT SELECT ON v_BaoCaoTonKho_XepHang TO Role_ThuKho;
+GRANT SELECT ON ChiNhanh TO Role_ThuKho;
 GRANT SELECT ON TonKho TO Role_ThuKho;
 GRANT SELECT ON KhoHang TO Role_ThuKho;
 GRANT SELECT ON SanPham TO Role_ThuKho;

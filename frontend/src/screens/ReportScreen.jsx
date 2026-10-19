@@ -40,7 +40,7 @@ export default function ReportScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [invRes, revRes, kpiRes, indRes, logRes, wRes, pRes] = await Promise.all([
+      const results = await Promise.allSettled([
         api.getRankedInventoryReport(),
         api.getBranchRevenue(revYear, revMonth),
         api.getStaffKpi(kpiYear),
@@ -50,13 +50,27 @@ export default function ReportScreen() {
         api.getProducts()
       ]);
 
-      if (invRes.success) setInventoryReport(invRes.report || []);
-      if (revRes.success) setBranchRevenue(revRes.report || []);
-      if (kpiRes.success) setStaffKpi(kpiRes.report || []);
-      if (indRes.success) setIndexedSales(indRes.sales || []);
-      if (logRes.success) setAuditLogs(logRes.logs || []);
-      if (wRes.success) setWarehouses(wRes.warehouses || []);
-      if (pRes.success) setProducts(pRes.products || []);
+      const [inv, rev, kpi, ind, log, w, p] = results;
+
+      if (inv.status === 'fulfilled' && inv.value?.success) setInventoryReport(inv.value.report || []);
+      if (rev.status === 'fulfilled' && rev.value?.success) setBranchRevenue(rev.value.report || []);
+      if (kpi.status === 'fulfilled' && kpi.value?.success) setStaffKpi(kpi.value.report || []);
+      if (ind.status === 'fulfilled' && ind.value?.success) setIndexedSales(ind.value.sales || []);
+      if (log.status === 'fulfilled' && log.value?.success) setAuditLogs(log.value.logs || []);
+      if (w.status === 'fulfilled' && w.value?.success) setWarehouses(w.value.warehouses || []);
+      if (p.status === 'fulfilled' && p.value?.success) setProducts(p.value.products || []);
+
+      // Chỉ hiển thị cảnh báo nếu báo cáo của tab hiện tại bị lỗi
+      const currentTabError = 
+        (activeTab === 'inventory' && inv.status === 'rejected' && inv.reason?.message) ||
+        (activeTab === 'revenue' && rev.status === 'rejected' && rev.reason?.message) ||
+        (activeTab === 'kpi' && kpi.status === 'rejected' && kpi.reason?.message) ||
+        (activeTab === 'indexed' && ind.status === 'rejected' && ind.reason?.message) ||
+        (activeTab === 'audit' && log.status === 'rejected' && log.reason?.message);
+
+      if (currentTabError) {
+        setError(currentTabError);
+      }
     } catch (err) {
       setError(err.message || 'Lỗi nạp báo cáo thống kê.');
     } finally {
