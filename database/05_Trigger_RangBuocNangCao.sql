@@ -20,6 +20,7 @@ IF OBJECT_ID('dbo.trg_ChiTietDonHang_TruTonKho', 'TR') IS NOT NULL DROP TRIGGER 
 IF OBJECT_ID('dbo.trg_SanPham_LichSuGia', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_SanPham_LichSuGia;
 IF OBJECT_ID('dbo.trg_DonHang_CapNhatDiemTichLuyKhachHang', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_DonHang_CapNhatDiemTichLuyKhachHang;
 IF OBJECT_ID('dbo.trg_DonHang_CamXoaDonDaGiao', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_DonHang_CamXoaDonDaGiao;
+IF OBJECT_ID('dbo.trg_NhanVien_AuditLog', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_NhanVien_AuditLog;
 GO
 
 -- =========================================================================
@@ -88,7 +89,7 @@ BEGIN
 END;
 GO
 
-PRINT N'✅ Đã tạo thành công TRIGGER 1 (INSTEAD OF INSERT): trg_ChiTietDonHang_KiemTraTonKhoTruocKhiGhi';
+PRINT N'Da tao thanh cong TRIGGER 1 (INSTEAD OF INSERT): trg_ChiTietDonHang_KiemTraTonKhoTruocKhiGhi';
 GO
 
 -- =========================================================================
@@ -120,7 +121,7 @@ BEGIN
 END;
 GO
 
-PRINT N'✅ Đã tạo thành công TRIGGER 2 (AFTER UPDATE): trg_SanPham_LichSuGia';
+PRINT N'Da tao thanh cong TRIGGER 2 (AFTER UPDATE): trg_SanPham_LichSuGia';
 GO
 
 -- =========================================================================
@@ -164,7 +165,7 @@ BEGIN
 END;
 GO
 
-PRINT N'✅ Đã tạo thành công TRIGGER 3 (AFTER UPDATE): trg_DonHang_CapNhatDiemTichLuyKhachHang';
+PRINT N'Da tao thanh cong TRIGGER 3 (AFTER UPDATE): trg_DonHang_CapNhatDiemTichLuyKhachHang';
 GO
 
 -- =========================================================================
@@ -200,7 +201,7 @@ BEGIN
 END;
 GO
 
-PRINT N'✅ Đã tạo thành công TRIGGER 4 (INSTEAD OF DELETE): trg_DonHang_CamXoaDonDaGiao';
+PRINT N'Da tao thanh cong TRIGGER 4 (INSTEAD OF DELETE): trg_DonHang_CamXoaDonDaGiao';
 GO
 
 -- =========================================================================
@@ -235,10 +236,10 @@ BEGIN
 END;
 GO
 
-PRINT N'✅ Đã tạo thành công TRIGGER 5 (AFTER INSERT, UPDATE): trg_NhanVien_AuditLog';
+PRINT N'Da tao thanh cong TRIGGER 5 (AFTER INSERT, UPDATE): trg_NhanVien_AuditLog';
 GO
 
 PRINT N'=========================================================================';
-PRINT N'🎯 HOÀN THÀNH TOÀN BỘ 5 TRIGGER CHUẨN MULTI-ROW VÀ BẢO MẬT CỦA CÔ THỂ!';
+PRINT N'HOAN THANH TOAN BO 5 TRIGGER CHUAN MULTI-ROW VA BAO MAT CUA CO THE!';
 PRINT N'=========================================================================';
 GO
