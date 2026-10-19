@@ -5,12 +5,19 @@ import {
   Tag, AlertCircle, CheckCircle2, History, DollarSign 
 } from 'lucide-react';
 
+import { getUserRole, canPerformAction, ROLES } from '../utils/permissions';
+
 export default function ProductScreen() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+
+  const currentUser = JSON.parse(localStorage.getItem('dbms_user') || '{}');
+  const userRole = getUserRole(currentUser);
+  const canAddProduct = canPerformAction(userRole, 'ADD_PRODUCT');
+  const canEditProduct = canPerformAction(userRole, 'EDIT_PRODUCT');
 
   // Search Filters (sp_TimKiemSanPhamNangCao)
   const [tuKhoa, setTuKhoa] = useState('');
@@ -164,9 +171,11 @@ export default function ProductScreen() {
           <button className="btn btn-secondary" onClick={fetchData} title="Làm mới">
             <RefreshCw size={16} /> Làm mới
           </button>
-          <button className="btn btn-primary" onClick={handleOpenAddModal}>
-            <Plus size={16} /> Thêm Sản Phẩm Mới
-          </button>
+          {canAddProduct && (
+            <button className="btn btn-primary" onClick={handleOpenAddModal}>
+              <Plus size={16} /> Thêm Sản Phẩm Mới
+            </button>
+          )}
         </div>
       </div>
 
@@ -275,20 +284,20 @@ export default function ProductScreen() {
                 <th style={{ textAlign: 'right' }}>Giá Bán Hiện Tại</th>
                 <th style={{ textAlign: 'center' }}>Đơn Vị Tính</th>
                 <th style={{ textAlign: 'center' }}>Tổng Tồn Kho</th>
-                <th style={{ textAlign: 'right' }}>Thao Tác</th>
+                {canEditProduct && <th style={{ textAlign: 'right' }}>Thao Tác</th>}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '40px' }}>
+                  <td colSpan={canEditProduct ? 7 : 6} style={{ textAlign: 'center', padding: '40px' }}>
                     <div className="spinner" style={{ margin: '0 auto 12px' }} />
                     <span style={{ color: 'var(--text-muted)' }}>Đang tải dữ liệu từ SQL Server...</span>
                   </td>
                 </tr>
               ) : products.length === 0 ? (
                 <tr>
-                  <td colSpan={7}>
+                  <td colSpan={canEditProduct ? 7 : 6}>
                     <div className="empty-state">
                       <Package size={36} className="empty-icon" />
                       <p>Không tìm thấy sản phẩm nào phù hợp với điều kiện tìm kiếm.</p>
@@ -314,24 +323,26 @@ export default function ProductScreen() {
                         {p.TongTonKho !== undefined ? `${p.TongTonKho} ${p.DonViTinh}` : 'Xem tại Kho'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: '8px' }}>
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          onClick={() => handleOpenEditModal(p)}
-                          title="Sửa thông tin / Cập nhật giá"
-                        >
-                          <Edit3 size={14} /> Sửa
-                        </button>
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => handleDeleteProduct(p.MaSP, p.TenSP)}
-                          title="Xóa mềm"
-                        >
-                          <Trash2 size={14} /> Xóa
-                        </button>
-                      </div>
-                    </td>
+                    {canEditProduct && (
+                      <td style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'inline-flex', gap: '8px' }}>
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => handleOpenEditModal(p)}
+                            title="Sửa thông tin / Cập nhật giá"
+                          >
+                            <Edit3 size={14} /> Sửa
+                          </button>
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => handleDeleteProduct(p.MaSP, p.TenSP)}
+                            title="Xóa mềm"
+                          >
+                            <Trash2 size={14} /> Xóa
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))
               )}

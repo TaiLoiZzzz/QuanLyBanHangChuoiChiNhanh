@@ -9,6 +9,8 @@ import {
   ShieldCheck, Database, Layers, CheckCircle2, ChevronRight
 } from 'lucide-react';
 
+import { getUserRole, canAccessScreen, ROLES } from './utils/permissions';
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('dbms_user');
@@ -22,7 +24,23 @@ export default function App() {
     return null;
   });
 
-  const [currentScreen, setCurrentScreen] = useState('products'); // 'products' | 'organization' | 'orders' | 'reports'
+  const userRole = getUserRole(currentUser);
+
+  // Mặc định chọn màn hình phù hợp nhất cho vai trò
+  const getDefaultScreen = (role) => {
+    if (role === ROLES.CASHIER) return 'orders';
+    if (role === ROLES.STOCK) return 'reports';
+    return 'products';
+  };
+
+  const [currentScreen, setCurrentScreen] = useState(() => getDefaultScreen(userRole));
+
+  // Tự động chuyển màn hình hợp lệ nếu đổi vai trò
+  useEffect(() => {
+    if (userRole && !canAccessScreen(userRole, currentScreen)) {
+      setCurrentScreen(getDefaultScreen(userRole));
+    }
+  }, [userRole]);
 
   const handleLogout = () => {
     localStorage.removeItem('dbms_user');
@@ -40,7 +58,7 @@ export default function App() {
       case 'organization':
         return { title: 'Chi Nhánh, Nhân Sự & Khách Hàng', desc: 'Mô hình chuỗi đa chi nhánh, cây phân cấp & xếp hạng VIP' };
       case 'orders':
-        return { title: 'Đơn Hàng & Hóa Đơn', desc: 'Quản lý bán hàng, in chứng từ hóa đơn & giữ chỗ tồn kho' };
+        return { title: 'Đơn Hàng & Hóa Đơn (POS)', desc: 'Quản lý bán hàng, in chứng từ hóa đơn & giữ chỗ tồn kho' };
       case 'reports':
         return { title: 'Tra Cứu & Báo Cáo Thống Kê', desc: 'Báo cáo tồn kho xếp hạng, KPI doanh thu & Indexed Views' };
       default:
@@ -49,6 +67,16 @@ export default function App() {
   };
 
   const navInfo = getScreenTitle();
+
+  const getRoleDisplayName = (role) => {
+    switch (role) {
+      case ROLES.ADMIN: return 'Quản Trị Hệ Thống (sa)';
+      case ROLES.MANAGER: return 'Quản Lý Chi Nhánh';
+      case ROLES.CASHIER: return 'Thu Ngân (Cashier)';
+      case ROLES.STOCK: return 'Thủ Kho (Stockkeeper)';
+      default: return 'Người Dùng';
+    }
+  };
 
   return (
     <div className="app-container">
@@ -65,47 +93,53 @@ export default function App() {
           </div>
         </div>
 
-        {/* Navigation Menu */}
+        {/* Navigation Menu (RBAC Least Privilege) */}
         <div className="sidebar-menu">
-          <div className="menu-section-title">Phân Hệ Nghiệp Vụ</div>
+          <div className="menu-section-title">Phân Hệ Cho Phép</div>
 
-          <div
-            className={`nav-item ${currentScreen === 'products' ? 'active' : ''}`}
-            onClick={() => setCurrentScreen('products')}
-          >
-            <Package size={18} />
-            <span style={{ flex: 1 }}>Quản Lý Sản Phẩm</span>
-            {currentScreen === 'products' && <ChevronRight size={14} />}
-          </div>
+          {canAccessScreen(userRole, 'products') && (
+            <div
+              className={`nav-item ${currentScreen === 'products' ? 'active' : ''}`}
+              onClick={() => setCurrentScreen('products')}
+            >
+              <Package size={18} />
+              <span style={{ flex: 1 }}>Quản Lý Sản Phẩm</span>
+              {currentScreen === 'products' && <ChevronRight size={14} />}
+            </div>
+          )}
 
-          <div
-            className={`nav-item ${currentScreen === 'organization' ? 'active' : ''}`}
-            onClick={() => setCurrentScreen('organization')}
-          >
-            <Building2 size={18} />
-            <span style={{ flex: 1 }}>Chi Nhánh & Nhân Sự</span>
-            {currentScreen === 'organization' && <ChevronRight size={14} />}
-          </div>
+          {canAccessScreen(userRole, 'orders') && (
+            <div
+              className={`nav-item ${currentScreen === 'orders' ? 'active' : ''}`}
+              onClick={() => setCurrentScreen('orders')}
+            >
+              <ShoppingCart size={18} />
+              <span style={{ flex: 1 }}>Đơn Hàng & Hóa Đơn</span>
+              {currentScreen === 'orders' && <ChevronRight size={14} />}
+            </div>
+          )}
 
-          <div
-            className={`nav-item ${currentScreen === 'orders' ? 'active' : ''}`}
-            onClick={() => setCurrentScreen('orders')}
-          >
-            <ShoppingCart size={18} />
-            <span style={{ flex: 1 }}>Đơn Hàng & Hóa Đơn</span>
-            {currentScreen === 'orders' && <ChevronRight size={14} />}
-          </div>
+          {canAccessScreen(userRole, 'organization') && (
+            <div
+              className={`nav-item ${currentScreen === 'organization' ? 'active' : ''}`}
+              onClick={() => setCurrentScreen('organization')}
+            >
+              <Building2 size={18} />
+              <span style={{ flex: 1 }}>Chi Nhánh & Nhân Sự</span>
+              {currentScreen === 'organization' && <ChevronRight size={14} />}
+            </div>
+          )}
 
-          <div className="menu-section-title" style={{ marginTop: '12px' }}>Phân Tích & Báo Cáo</div>
-
-          <div
-            className={`nav-item ${currentScreen === 'reports' ? 'active' : ''}`}
-            onClick={() => setCurrentScreen('reports')}
-          >
-            <BarChart3 size={18} />
-            <span style={{ flex: 1 }}>Tra Cứu & Thống Kê</span>
-            {currentScreen === 'reports' && <ChevronRight size={14} />}
-          </div>
+          {canAccessScreen(userRole, 'reports') && (
+            <div
+              className={`nav-item ${currentScreen === 'reports' ? 'active' : ''}`}
+              onClick={() => setCurrentScreen('reports')}
+            >
+              <BarChart3 size={18} />
+              <span style={{ flex: 1 }}>Tra Cứu & Báo Cáo</span>
+              {currentScreen === 'reports' && <ChevronRight size={14} />}
+            </div>
+          )}
         </div>
 
         {/* Sidebar Footer: User Role & Logout */}
@@ -118,7 +152,7 @@ export default function App() {
               <div className="user-name">{currentUser.username}</div>
               <div className="user-role">
                 <ShieldCheck size={12} color="#60A5FA" />
-                <span>{currentUser.role || 'User'}</span>
+                <span title={getRoleDisplayName(userRole)}>{getRoleDisplayName(userRole)}</span>
               </div>
             </div>
           </div>
@@ -183,10 +217,10 @@ export default function App() {
 
         {/* Active Screen Body */}
         <main style={{ flex: 1 }}>
-          {currentScreen === 'products' && <ProductScreen />}
-          {currentScreen === 'organization' && <OrganizationScreen />}
-          {currentScreen === 'orders' && <OrderScreen />}
-          {currentScreen === 'reports' && <ReportScreen />}
+          {currentScreen === 'products' && <ProductScreen currentUser={currentUser} />}
+          {currentScreen === 'organization' && <OrganizationScreen currentUser={currentUser} />}
+          {currentScreen === 'orders' && <OrderScreen currentUser={currentUser} />}
+          {currentScreen === 'reports' && <ReportScreen currentUser={currentUser} />}
         </main>
       </div>
     </div>

@@ -6,11 +6,18 @@ import {
   Package, DollarSign, Calendar, Eye
 } from 'lucide-react';
 
+import { getUserRole, canPerformAction, ROLES } from '../utils/permissions';
+
 export default function ReportScreen() {
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'revenue' | 'kpi' | 'indexed' | 'audit'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+
+  const currentUser = JSON.parse(localStorage.getItem('dbms_user') || '{}');
+  const userRole = getUserRole(currentUser);
+  const canViewFinancials = canPerformAction(userRole, 'VIEW_FINANCIAL_REPORTS');
+  const canTransferStock = canPerformAction(userRole, 'TRANSFER_STOCK');
 
   // Data
   const [inventoryReport, setInventoryReport] = useState([]);
@@ -40,25 +47,36 @@ export default function ReportScreen() {
     setLoading(true);
     setError(null);
     try {
-      const results = await Promise.allSettled([
+      // Chỉ gọi các API mà vai trò hiện tại có quyền truy cập
+      const tasks = [
         api.getRankedInventoryReport(),
-        api.getBranchRevenue(revYear, revMonth),
-        api.getStaffKpi(kpiYear),
-        api.getIndexedSales(),
-        api.getAuditLogs(),
         api.getWarehouses(),
         api.getProducts()
-      ]);
+      ];
 
-      const [inv, rev, kpi, ind, log, w, p] = results;
+      if (canViewFinancials) {
+        tasks.push(
+          api.getBranchRevenue(revYear, revMonth),
+          api.getStaffKpi(kpiYear),
+          api.getIndexedSales(),
+          api.getAuditLogs()
+        );
+      }
 
-      if (inv.status === 'fulfilled' && inv.value?.success) setInventoryReport(inv.value.report || []);
-      if (rev.status === 'fulfilled' && rev.value?.success) setBranchRevenue(rev.value.report || []);
-      if (kpi.status === 'fulfilled' && kpi.value?.success) setStaffKpi(kpi.value.report || []);
-      if (ind.status === 'fulfilled' && ind.value?.success) setIndexedSales(ind.value.sales || []);
-      if (log.status === 'fulfilled' && log.value?.success) setAuditLogs(log.value.logs || []);
-      if (w.status === 'fulfilled' && w.value?.success) setWarehouses(w.value.warehouses || []);
-      if (p.status === 'fulfilled' && p.value?.success) setProducts(p.value.products || []);
+      const results = await Promise.allSettled(tasks);
+
+      const [inv, w, p, rev, kpi, ind, log] = results;
+
+      if (inv?.status === 'fulfilled' && inv.value?.success) setInventoryReport(inv.value.report || []);
+      if (w?.status === 'fulfilled' && w.value?.success) setWarehouses(w.value.warehouses || []);
+      if (p?.status === 'fulfilled' && p.value?.success) setProducts(p.value.products || []);
+
+      if (canViewFinancials) {
+        if (rev?.status === 'fulfilled' && rev.value?.success) setBranchRevenue(rev.value.report || []);
+        if (kpi?.status === 'fulfilled' && kpi.value?.success) setStaffKpi(kpi.value.report || []);
+        if (ind?.status === 'fulfilled' && ind.value?.success) setIndexedSales(ind.value.sales || []);
+        if (log?.status === 'fulfilled' && log.value?.success) setAuditLogs(log.value.logs || []);
+      }
 
       // Chỉ hiển thị cảnh báo nếu báo cáo của tab hiện tại bị lỗi
       const currentTabError = 
@@ -152,21 +170,23 @@ export default function ReportScreen() {
           <button className="btn btn-secondary" onClick={fetchReports}>
             <RefreshCw size={16} /> Làm mới
           </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setTransferForm({
-                maKhoXuat: warehouses[0]?.MaKho || '',
-                maKhoNhap: warehouses[1]?.MaKho || '',
-                maSP: products[0]?.MaSP || '',
-                soLuong: 5,
-                isInterBranch: true
-              });
-              setIsTransferModalOpen(true);
-            }}
-          >
-            <ArrowRightLeft size={16} /> Điều Chuyển Kho Hàng
-          </button>
+          {canTransferStock && (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setTransferForm({
+                  maKhoXuat: warehouses[0]?.MaKho || '',
+                  maKhoNhap: warehouses[1]?.MaKho || '',
+                  maSP: products[0]?.MaSP || '',
+                  soLuong: 5,
+                  isInterBranch: true
+                });
+                setIsTransferModalOpen(true);
+              }}
+            >
+              <ArrowRightLeft size={16} /> Điều Chuyển Kho Hàng
+            </button>
+          )}
         </div>
       </div>
 
@@ -193,30 +213,35 @@ export default function ReportScreen() {
           >
             <Layers size={18} /> Báo Cáo Tồn Kho Xếp Hạng (View 1)
           </button>
-          <button
-            className={`tab-btn ${activeTab === 'revenue' ? 'active' : ''}`}
-            onClick={() => setActiveTab('revenue')}
-          >
-            <TrendingUp size={18} /> Doanh Thu Chi Nhánh (SP 5)
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'kpi' ? 'active' : ''}`}
-            onClick={() => setActiveTab('kpi')}
-          >
-            <Award size={18} /> KPI Nhân Viên (mTVF 4)
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'indexed' ? 'active' : ''}`}
-            onClick={() => setActiveTab('indexed')}
-          >
-            <BarChart3 size={18} /> Sản Phẩm Bán Chạy (Indexed View)
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
-            onClick={() => setActiveTab('audit')}
-          >
-            <Shield size={18} /> Nhật Ký Hệ Thống (Audit Logs)
-          </button>
+
+          {canViewFinancials && (
+            <>
+              <button
+                className={`tab-btn ${activeTab === 'revenue' ? 'active' : ''}`}
+                onClick={() => setActiveTab('revenue')}
+              >
+                <TrendingUp size={18} /> Doanh Thu Chi Nhánh (SP 5)
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'kpi' ? 'active' : ''}`}
+                onClick={() => setActiveTab('kpi')}
+              >
+                <Award size={18} /> KPI Nhân Viên (mTVF 4)
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'indexed' ? 'active' : ''}`}
+                onClick={() => setActiveTab('indexed')}
+              >
+                <BarChart3 size={18} /> Sản Phẩm Bán Chạy (Indexed View)
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'audit' ? 'active' : ''}`}
+                onClick={() => setActiveTab('audit')}
+              >
+                <Shield size={18} /> Nhật Ký Hệ Thống (Audit Logs)
+              </button>
+            </>
+          )}
         </div>
 
         {/* TAB 1: BÁO CÁO TỒN KHO XẾP HẠNG (v_BaoCaoTonKho_XepHang) */}

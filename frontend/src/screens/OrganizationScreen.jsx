@@ -5,8 +5,16 @@ import {
   CheckCircle2, Phone, MapPin, Award, GitBranch, ArrowRightLeft,
   DollarSign, ShieldAlert, Sparkles, UserPlus, CreditCard
 } from 'lucide-react';
+import { getUserRole, canPerformAction, ROLES } from '../utils/permissions';
 
-export default function OrganizationScreen() {
+export default function OrganizationScreen({ currentUser }) {
+  const userRole = getUserRole(currentUser);
+  const canAddBranch = canPerformAction(userRole, 'ADD_BRANCH');
+  const canAddEmployee = canPerformAction(userRole, 'ADD_EMPLOYEE');
+  const canReorganize = canPerformAction(userRole, 'REORGANIZE_EMPLOYEES');
+  const canBatchPromote = canPerformAction(userRole, 'BATCH_PROMOTE_CUSTOMERS');
+  const canAddCustomer = canPerformAction(userRole, 'ADD_CUSTOMER');
+
   const [activeTab, setActiveTab] = useState('branches'); // 'branches' | 'employees' | 'customers'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -44,7 +52,7 @@ export default function OrganizationScreen() {
     setLoading(true);
     setError(null);
     try {
-      const [bRes, eRes, cRes, hRes, b1Res] = await Promise.all([
+      const results = await Promise.allSettled([
         api.getBranches(),
         api.getEmployees(),
         api.getCustomers(),
@@ -52,11 +60,13 @@ export default function OrganizationScreen() {
         api.getBranch1Staff()
       ]);
 
-      if (bRes.success) setBranches(bRes.branches || []);
-      if (eRes.success) setEmployees(eRes.employees || []);
-      if (cRes.success) setCustomers(cRes.customers || []);
-      if (hRes.success) setHierarchy(hRes.hierarchy || []);
-      if (b1Res.success) setBranch1Staff(b1Res.staffList || []);
+      const [bRes, eRes, cRes, hRes, b1Res] = results;
+
+      if (bRes.status === 'fulfilled' && bRes.value?.success) setBranches(bRes.value.branches || []);
+      if (eRes.status === 'fulfilled' && eRes.value?.success) setEmployees(eRes.value.employees || []);
+      if (cRes.status === 'fulfilled' && cRes.value?.success) setCustomers(cRes.value.customers || []);
+      if (hRes.status === 'fulfilled' && hRes.value?.success) setHierarchy(hRes.value.hierarchy || []);
+      if (b1Res.status === 'fulfilled' && b1Res.value?.success) setBranch1Staff(b1Res.value.staffList || []);
     } catch (err) {
       setError(err.message || 'Lỗi tải dữ liệu cơ cấu tổ chức.');
     } finally {
@@ -190,29 +200,37 @@ export default function OrganizationScreen() {
           <button className="btn btn-secondary" onClick={fetchAll}>
             <RefreshCw size={16} /> Làm mới
           </button>
-          {activeTab === 'branches' && (
+          {activeTab === 'branches' && canAddBranch && (
             <button className="btn btn-primary" onClick={() => setIsBranchModalOpen(true)}>
               <Plus size={16} /> Thêm chi nhánh
             </button>
           )}
           {activeTab === 'employees' && (
             <>
-              <button className="btn btn-secondary" onClick={() => setIsReorganizeModalOpen(true)}>
-                <ArrowRightLeft size={16} /> Điều chuyển quản lý (Tx 3)
-              </button>
-              <button className="btn btn-primary" onClick={() => setIsEmpModalOpen(true)}>
-                <UserPlus size={16} /> Thêm Nhân Viên
-              </button>
+              {canReorganize && (
+                <button className="btn btn-secondary" onClick={() => setIsReorganizeModalOpen(true)}>
+                  <ArrowRightLeft size={16} /> Điều chuyển quản lý (Tx 3)
+                </button>
+              )}
+              {canAddEmployee && (
+                <button className="btn btn-primary" onClick={() => setIsEmpModalOpen(true)}>
+                  <UserPlus size={16} /> Thêm Nhân Viên
+                </button>
+              )}
             </>
           )}
           {activeTab === 'customers' && (
             <>
-              <button className="btn btn-secondary" onClick={() => setIsPromoteModalOpen(true)}>
-                <Sparkles size={16} /> Thăng hạng VIP hàng loạt (Tx 4)
-              </button>
-              <button className="btn btn-primary" onClick={() => setIsCustomerModalOpen(true)}>
-                <Plus size={16} /> Thêm Khách Hàng
-              </button>
+              {canBatchPromote && (
+                <button className="btn btn-secondary" onClick={() => setIsPromoteModalOpen(true)}>
+                  <Sparkles size={16} /> Thăng hạng VIP hàng loạt (Tx 4)
+                </button>
+              )}
+              {canAddCustomer && (
+                <button className="btn btn-primary" onClick={() => setIsCustomerModalOpen(true)}>
+                  <Plus size={16} /> Thêm Khách Hàng
+                </button>
+              )}
             </>
           )}
         </div>

@@ -5,8 +5,13 @@ import {
   FileText, Calendar, Filter, Clock, Check, X, ShieldCheck, Printer,
   Building, User, AlertTriangle
 } from 'lucide-react';
+import { getUserRole, canPerformAction, ROLES } from '../utils/permissions';
 
-export default function OrderScreen() {
+export default function OrderScreen({ currentUser }) {
+  const userRole = getUserRole(currentUser);
+  const canCreateOrder = canPerformAction(userRole, 'CREATE_ORDER');
+  const canCancelOrder = canPerformAction(userRole, 'CANCEL_ORDER');
+
   const [orders, setOrders] = useState([]);
   const [branches, setBranches] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -65,18 +70,19 @@ export default function OrderScreen() {
 
   const fetchMasterData = async () => {
     try {
-      const [bRes, cRes, eRes, wRes, pRes] = await Promise.all([
+      const results = await Promise.allSettled([
         api.getBranches(),
         api.getCustomers(),
         api.getEmployees(),
         api.getWarehouses(),
         api.getProducts()
       ]);
-      if (bRes.success) setBranches(bRes.branches || []);
-      if (cRes.success) setCustomers(cRes.customers || []);
-      if (eRes.success) setEmployees(eRes.employees || []);
-      if (wRes.success) setWarehouses(wRes.warehouses || []);
-      if (pRes.success) setProducts(pRes.products || []);
+      const [bRes, cRes, eRes, wRes, pRes] = results;
+      if (bRes.status === 'fulfilled' && bRes.value?.success) setBranches(bRes.value.branches || []);
+      if (cRes.status === 'fulfilled' && cRes.value?.success) setCustomers(cRes.value.customers || []);
+      if (eRes.status === 'fulfilled' && eRes.value?.success) setEmployees(eRes.value.employees || []);
+      if (wRes.status === 'fulfilled' && wRes.value?.success) setWarehouses(wRes.value.warehouses || []);
+      if (pRes.status === 'fulfilled' && pRes.value?.success) setProducts(pRes.value.products || []);
     } catch (err) {
       console.error(err);
     }
@@ -252,24 +258,26 @@ export default function OrderScreen() {
           <button className="btn btn-secondary" onClick={fetchOrders}>
             <RefreshCw size={16} /> Làm mới
           </button>
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setOrderForm({
-                maKH: customers[0]?.MaKH || '',
-                maNV: employees[0]?.MaNV || '',
-                maKhoXuat: warehouses[0]?.MaKho || '',
-                maSP: products[0]?.MaSP || '',
-                soLuong: 1,
-                donGiaBan: products[0]?.GiaBanHienTai || '',
-                useHoldlock: true
-              });
-              setStockCheckResult(null);
-              setIsCreateModalOpen(true);
-            }}
-          >
-            <Plus size={16} /> Tạo Đơn Hàng Mới
-          </button>
+          {canCreateOrder && (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setOrderForm({
+                  maKH: customers[0]?.MaKH || '',
+                  maNV: employees[0]?.MaNV || '',
+                  maKhoXuat: warehouses[0]?.MaKho || '',
+                  maSP: products[0]?.MaSP || '',
+                  soLuong: 1,
+                  donGiaBan: products[0]?.GiaBanHienTai || '',
+                  useHoldlock: true
+                });
+                setStockCheckResult(null);
+                setIsCreateModalOpen(true);
+              }}
+            >
+              <Plus size={16} /> Tạo Đơn Hàng Mới
+            </button>
+          )}
         </div>
       </div>
 
@@ -421,7 +429,7 @@ export default function OrderScreen() {
                         )}
 
                         {/* Cancel & Refund (ACID Tx 2) */}
-                        {o.TrangThai !== 3 && o.TrangThai !== 4 && (
+                        {canCancelOrder && o.TrangThai !== 3 && o.TrangThai !== 4 && (
                           <button
                             className="btn btn-sm btn-outline-danger"
                             onClick={() => {
