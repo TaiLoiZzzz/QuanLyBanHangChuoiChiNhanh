@@ -1,0 +1,15 @@
+{
+  "name": "quan-ly-ban-hang-chuoi-chi-nhanh",
+  "version": "1.0.0",
+  "description": "He thong Quan ly Ban hang & Chuoi Ton kho Da Chi nhanh - DBMS HCMUTE",
+  "scripts": {
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "backend:start": "node backend/src/server.js",
+    "frontend:dev": "npm run --prefix frontend dev",
+    "frontend:build": "npm run --prefix frontend build",
+    "test": "node backend/test_ultra_deep.js",
+    "test:full": "node backend/test_deep_full_system.js",
+    "test:business": "node backend/test_deep_business.js"
+  }
+}
