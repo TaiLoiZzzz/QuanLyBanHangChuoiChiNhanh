@@ -144,27 +144,41 @@ class SqlServerMasterRepository {
       const result = await request.query(query);
       return result.recordset;
     } catch (err) {
-      // Bảo mật cấp cột / cấp bảng: Nếu Role bị cấm truy cập bảng NhanVien hoặc cột Luong (Error 229)
-      // Tự động fallback sang View phân cấp nhân sự được cấp quyền v_PhanCapNhanSu_ToanDien
-      if (err.number === 229 || err.message?.includes('permission was denied')) {
+      // Bảo mật cấp cột / cấp bảng: Nếu Role bị cấm truy cập bảng NhanVien hoặc cột Luong (Error 229, 230)
+      if (err.number === 229 || err.number === 230 || err.message?.includes('permission was denied')) {
         try {
-          const fallbackQuery = `
-            SELECT 
-              MaNV,
-              TenNhanVien AS HoTen,
-              CAST(NULL AS DECIMAL(12,2)) AS Luong,
-              MaCN,
-              ChiNhanhLamViec AS TenCN,
-              MaQL,
-              NguoiQuanLyTrucTiep AS TenNguoiQuanLy,
-              0 AS DaXoa
-            FROM v_PhanCapNhanSu_ToanDien
-            ORDER BY MaCN, MaNV ASC;
+          // 1. Fallback cấp cột: Truy vấn bảng NhanVien nhưng bỏ qua cột Luong (dành cho Thu Ngân / Role không có quyền xem lương)
+          const fallbackColQuery = `
+            SELECT nv.MaNV, nv.HoTen, CAST(NULL AS DECIMAL(12,2)) AS Luong, nv.MaCN, cn.TenCN, nv.MaQL, ql.HoTen AS TenNguoiQuanLy, nv.DaXoa
+            FROM NhanVien nv
+            INNER JOIN ChiNhanh cn ON nv.MaCN = cn.MaCN
+            LEFT JOIN NhanVien ql ON nv.MaQL = ql.MaNV
+            WHERE nv.DaXoa = 0
+            ORDER BY nv.MaCN, nv.MaNV ASC;
           `;
-          const fbResult = await pool.request().query(fallbackQuery);
-          return fbResult.recordset;
+          const colResult = await pool.request().query(fallbackColQuery);
+          return colResult.recordset;
         } catch {
-          return [];
+          // 2. Fallback cấp bảng: Nếu bị cấm toàn bảng NhanVien, chuyển sang View phân cấp nhân sự
+          try {
+            const fallbackQuery = `
+              SELECT 
+                MaNV,
+                TenNhanVien AS HoTen,
+                CAST(NULL AS DECIMAL(12,2)) AS Luong,
+                MaCN,
+                ChiNhanhLamViec AS TenCN,
+                MaQL,
+                NguoiQuanLyTrucTiep AS TenNguoiQuanLy,
+                0 AS DaXoa
+              FROM v_PhanCapNhanSu_ToanDien
+              ORDER BY MaCN, MaNV ASC;
+            `;
+            const fbResult = await pool.request().query(fallbackQuery);
+            return fbResult.recordset;
+          } catch {
+            return [];
+          }
         }
       }
       throw err;
