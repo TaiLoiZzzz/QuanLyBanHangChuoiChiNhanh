@@ -45,6 +45,12 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
+        IF @SoLuong <= 0
+            THROW 50004, N'Lỗi: Số lượng đặt hàng phải lớn hơn 0!', 1;
+
+        IF @DonGiaBan <= 0
+            THROW 50005, N'Lỗi: Đơn giá bán phải lớn hơn 0 VNĐ!', 1;
+
         -- 1. Kiểm tra tồn tại của Khách hàng, Nhân viên, Kho
         IF NOT EXISTS (SELECT 1 FROM KhachHang WHERE MaKH = @MaKH)
             THROW 50001, N'Lỗi: Khách hàng không tồn tại trong hệ thống!', 1;
@@ -55,13 +61,25 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM KhoHang WHERE MaKho = @MaKhoXuat)
             THROW 50003, N'Lỗi: Kho xuất hàng không tồn tại!', 1;
 
-        -- 2. Tạo đơn hàng mới
+        -- 2. Khóa dòng dữ liệu tồn kho bằng UPDLOCK + HOLDLOCK chống Lost Update / Concurrency Race Condition
+        -- Đảm bảo nếu kho còn 1 thì chỉ duy nhất 1 phiên được mua, phiên thứ 2 bắt buộc phải chờ
+        DECLARE @TonKhoHienTai INT;
+        SELECT @TonKhoHienTai = SoLuongTon
+        FROM TonKho WITH (UPDLOCK, HOLDLOCK)
+        WHERE MaKho = @MaKhoXuat AND MaSP = @MaSP;
+
+        IF @TonKhoHienTai IS NULL OR @TonKhoHienTai < @SoLuong
+            THROW 50006, N'Lỗi giao dịch: Không đủ số lượng tồn kho để đáp ứng đơn hàng!', 1;
+
+        -- 3. Tạo đơn hàng mới với Tổng tiền tính toán trực tiếp (không để mặc định bằng 0)
+        DECLARE @TongTienBanDau DECIMAL(14,2) = @SoLuong * @DonGiaBan;
+
         INSERT INTO DonHang (MaKH, MaNV, MaKhoXuat, NgayDat, TrangThai, TongTien)
-        VALUES (@MaKH, @MaNV, @MaKhoXuat, GETDATE(), 0, 0);
+        VALUES (@MaKH, @MaNV, @MaKhoXuat, GETDATE(), 0, @TongTienBanDau);
 
         SET @MaDH_Moi = SCOPE_IDENTITY();
 
-        -- 3. Tạo chi tiết đơn hàng (Trigger 1 sẽ tự kiểm tra tồn kho và trừ kho)
+        -- 4. Tạo chi tiết đơn hàng (Trigger 1 sẽ tự động kiểm tra và đồng bộ lại)
         INSERT INTO ChiTietDonHang (MaDH, MaSP, SoLuong, DonGiaBan)
         VALUES (@MaDH_Moi, @MaSP, @SoLuong, @DonGiaBan);
 

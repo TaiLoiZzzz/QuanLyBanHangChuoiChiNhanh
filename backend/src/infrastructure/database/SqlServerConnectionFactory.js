@@ -26,7 +26,9 @@ class SqlServerConnectionFactory {
   async getPool(user, password) {
     const username = user || process.env.DB_USER || 'sa';
     const pwd = password || process.env.DB_PASSWORD || 'PasswordAdmin@2026';
-    const poolKey = `${username}_${process.env.DB_NAME}`;
+    const crypto = require('crypto');
+    const pwdHash = crypto.createHash('sha256').update(pwd).digest('hex').substring(0, 10);
+    const poolKey = `${username}_${pwdHash}_${process.env.DB_NAME}`;
 
     if (this.pools.has(poolKey)) {
       const existingPool = this.pools.get(poolKey);

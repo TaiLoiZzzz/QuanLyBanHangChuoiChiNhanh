@@ -108,15 +108,11 @@ FROM DISK = '/var/opt/mssql/data/QuanLyBanHangDB_Log1.trn'
 WITH NORECOVERY;
 GO
 
--- 7.4. PHỤC HỒI BẢN TAIL-LOG KÈM LỆNH DỪNG THỜI GIAN "STOPAT" TRƯỚC SỰ CỐ
--- (Điền chính xác chuỗi thời gian @ThoiDiemAnToan đã ghi nhận ở trên)
--- Ví dụ: STOPAT = '2026-10-19 09:30:00'
-/*
+-- 7.4. PHỤC HỒI BẢN TAIL-LOG KÈM LỆNH DỪNG THỜI GIAN "STOPAT" TRƯỚC SỰ CỐ VÀ ĐƯA CSDL VỀ ONLINE
 RESTORE LOG QuanLyBanHangDB 
 FROM DISK = '/var/opt/mssql/data/QuanLyBanHangDB_TailLog.trn'
 WITH RECOVERY, STOPAT = '2026-10-19 10:19:59';
 GO
-*/
 
 PRINT N'=========================================================================';
 PRINT N'HOAN THANH KICH BAN DISASTER RECOVERY CHUAN XAC THEO YEU CAU CUA CO THE!';

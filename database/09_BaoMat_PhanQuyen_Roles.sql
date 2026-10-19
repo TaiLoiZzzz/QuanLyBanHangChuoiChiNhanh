@@ -71,27 +71,45 @@ GRANT CONTROL ON DATABASE::QuanLyBanHangDB TO Role_Admin;
 GO
 
 -- ROLE 2: QUẢN LÝ CHI NHÁNH (PHAN THIỆN KHỞI - 20%)
--- Được xem tất cả Views báo cáo, thủ tục chuyển kho, tìm kiếm
+-- Được xem tất cả Views báo cáo, thủ tục chuyển kho, tìm kiếm, KPI và giao dịch quản lý
 GRANT SELECT ON v_BaoCaoTonKho_XepHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON v_TongHopDoanhThuSanPham TO Role_QuanLyChiNhanh;
 GRANT SELECT ON v_PhanCapNhanSu_ToanDien TO Role_QuanLyChiNhanh;
 GRANT SELECT ON v_NhanVien_ChiNhanh1_KiemSoat TO Role_QuanLyChiNhanh;
+GRANT SELECT ON dbo.fn_BaoCaoDoanhThuNhanVienChiTiet TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.sp_BaoCaoTongHopDoanhThuChiNhanh TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.sp_ChuyenKhoNoiBo TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_XoaNhanVienVaDieuChuyenQuanLy TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_ThangHangThanhVienHangLoat TO Role_QuanLyChiNhanh;
+GRANT SELECT ON KhoHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON SanPham TO Role_QuanLyChiNhanh;
+GRANT SELECT ON DanhMuc TO Role_QuanLyChiNhanh;
+GRANT SELECT ON KhachHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON DonHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON ChiTietDonHang TO Role_QuanLyChiNhanh;
 -- DENY xem trực tiếp bảng lương nhạy cảm (bắt buộc xem qua View)
 DENY SELECT ON NhanVien TO Role_QuanLyChiNhanh;
 GO
 
 -- ROLE 3: THU NGÂN / CASHIER (HUỲNH VĂN BÌNH - 20%)
--- Chỉ được tạo đơn, in hóa đơn, tìm khách và tra sản phẩm
+-- Được tạo đơn, in hóa đơn, tìm khách, tra sản phẩm và chạy các hàm/giao dịch bán hàng
 GRANT EXECUTE ON dbo.sp_TaoDonHangVaChiTiet TO Role_ThuNgan;
 GRANT EXECUTE ON dbo.sp_CapNhatTrangThaiDonHang TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_Tx_DatHangVaGiuCho TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_Tx_HuyDonHangVaHoanTonKho TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.fn_TinhTienSauChietKhauVIP TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.fn_KiemTraKhaNangDapUngDonHang TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.fn_FormatMaHoaDonTuDong TO Role_ThuNgan;
+GRANT SELECT ON dbo.fn_DanhSachDonHangTheoKhoangThoiGian TO Role_ThuNgan;
 GRANT SELECT ON v_InHoaDon_ChiTietPhucHop TO Role_ThuNgan;
 GRANT SELECT, INSERT, UPDATE ON KhachHang TO Role_ThuNgan;
 GRANT SELECT ON SanPham TO Role_ThuNgan;
 GRANT SELECT ON DanhMuc TO Role_ThuNgan;
--- BẢO MẬT: CẤM TUYỆT ĐỐI XEM LƯƠNG HOẶC XÓA BẤT KỲ DỮ LIỆU NÀO
+GRANT SELECT ON DonHang TO Role_ThuNgan;
+GRANT SELECT ON ChiTietDonHang TO Role_ThuNgan;
+-- BẢO MẬT: CẤM TUYỆT ĐỐI XEM LƯƠNG HOẶC XÓA BẤT KỲ DỮ LIỆU NÀO TRỰC TIẾP
 DENY SELECT ON NhanVien TO Role_ThuNgan;
 DENY DELETE ON DonHang TO Role_ThuNgan;
 DENY DELETE ON ChiTietDonHang TO Role_ThuNgan;
@@ -99,11 +117,14 @@ DENY SELECT ON LichSuGia TO Role_ThuNgan;
 GO
 
 -- ROLE 4: THỦ KHO / STOCKKEEPER (HOÀNG GIA KIỆT - 20%)
--- Chỉ được kiểm tra tồn kho, chuyển kho
+-- Được kiểm tra tồn kho, chuyển kho nội bộ và liên chi nhánh
 GRANT SELECT ON v_BaoCaoTonKho_XepHang TO Role_ThuKho;
 GRANT SELECT ON TonKho TO Role_ThuKho;
 GRANT SELECT ON KhoHang TO Role_ThuKho;
+GRANT SELECT ON SanPham TO Role_ThuKho;
+GRANT SELECT ON DanhMuc TO Role_ThuKho;
 GRANT EXECUTE ON dbo.sp_ChuyenKhoNoiBo TO Role_ThuKho;
+GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_ThuKho;
 -- BẢO MẬT: CẤM XEM THÔNG TIN KHÁCH HÀNG, ĐƠN HÀNG, NHÂN SỰ
 DENY SELECT ON KhachHang TO Role_ThuKho;
 DENY SELECT ON DonHang TO Role_ThuKho;

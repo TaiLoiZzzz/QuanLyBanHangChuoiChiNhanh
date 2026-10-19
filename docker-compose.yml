@@ -9,7 +9,7 @@ services:
       - MSSQL_SA_PASSWORD=PasswordAdmin@2026
       - MSSQL_PID=Developer
     ports:
-      - "14333:1433"
+      - "11433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql/data
 

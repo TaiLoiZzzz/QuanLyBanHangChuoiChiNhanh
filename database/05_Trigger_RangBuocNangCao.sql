@@ -39,10 +39,10 @@ ON ChiTietDonHang
 AFTER INSERT, UPDATE, DELETE
 AS
 BEGIN
-    SET NOCOUNT ON;
-
-    -- 1. Chốt chặn hiệu năng: Nếu không có dòng nào bị tác động thì thoát ngay
+    -- 1. Chốt chặn hiệu năng: Kiểm tra @@ROWCOUNT trước mọi câu lệnh khác
     IF @@ROWCOUNT = 0 RETURN;
+
+    SET NOCOUNT ON;
 
     -- =========================================================================
     -- TRƯỜNG HỢP A: THAO TÁC INSERT (THÊM MỚI CHI TIẾT ĐƠN HÀNG)

@@ -25,18 +25,26 @@ GO
 SET QUOTED_IDENTIFIER ON;
 GO
 
--- 3. XÓA BẢNG THEO THỨ TỰ NGƯỢC (TỪ CON ĐẾN CHA) NẾU ĐÃ TỒN TẠI ĐỂ CHẠY LẠI KHÔNG LỖI
-IF OBJECT_ID('ChiTietDonHang', 'U') IS NOT NULL DROP TABLE ChiTietDonHang;
-IF OBJECT_ID('DonHang', 'U') IS NOT NULL DROP TABLE DonHang;
-IF OBJECT_ID('TonKho', 'U') IS NOT NULL DROP TABLE TonKho;
-IF OBJECT_ID('LichSuGia', 'U') IS NOT NULL DROP TABLE LichSuGia;
-IF OBJECT_ID('SanPham', 'U') IS NOT NULL DROP TABLE SanPham;
-IF OBJECT_ID('KhoHang', 'U') IS NOT NULL DROP TABLE KhoHang;
-IF OBJECT_ID('DanhMuc', 'U') IS NOT NULL DROP TABLE DanhMuc;
-IF OBJECT_ID('KhachHang', 'U') IS NOT NULL DROP TABLE KhachHang;
-IF OBJECT_ID('NhanVien', 'U') IS NOT NULL DROP TABLE NhanVien;
-IF OBJECT_ID('ChiNhanh', 'U') IS NOT NULL DROP TABLE ChiNhanh;
-IF OBJECT_ID('NhatKyHeThong', 'U') IS NOT NULL DROP TABLE NhatKyHeThong;
+-- 3. XÓA CÁC ĐỐI TƯỢNG VIEW / INDEXED VIEW (CÓ SCHEMABINDING) TRƯỚC ĐỂ TRÁNH KHÓA BẢNG KHI CHẠY LẠI
+IF OBJECT_ID('dbo.v_TongHopDoanhThuSanPham', 'V') IS NOT NULL DROP VIEW dbo.v_TongHopDoanhThuSanPham;
+IF OBJECT_ID('dbo.v_InHoaDon_ChiTietPhucHop', 'V') IS NOT NULL DROP VIEW dbo.v_InHoaDon_ChiTietPhucHop;
+IF OBJECT_ID('dbo.v_BaoCaoTonKho_XepHang', 'V') IS NOT NULL DROP VIEW dbo.v_BaoCaoTonKho_XepHang;
+IF OBJECT_ID('dbo.v_PhanCapNhanSu_ToanDien', 'V') IS NOT NULL DROP VIEW dbo.v_PhanCapNhanSu_ToanDien;
+IF OBJECT_ID('dbo.v_NhanVien_ChiNhanh1_KiemSoat', 'V') IS NOT NULL DROP VIEW dbo.v_NhanVien_ChiNhanh1_KiemSoat;
+GO
+
+-- 4. XÓA BẢNG THEO THỨ TỰ NGƯỢC (TỪ CON ĐẾN CHA) NẾU ĐÃ TỒN TẠI ĐỂ CHẠY LẠI KHÔNG LỖI
+IF OBJECT_ID('dbo.ChiTietDonHang', 'U') IS NOT NULL DROP TABLE dbo.ChiTietDonHang;
+IF OBJECT_ID('dbo.DonHang', 'U') IS NOT NULL DROP TABLE dbo.DonHang;
+IF OBJECT_ID('dbo.TonKho', 'U') IS NOT NULL DROP TABLE dbo.TonKho;
+IF OBJECT_ID('dbo.LichSuGia', 'U') IS NOT NULL DROP TABLE dbo.LichSuGia;
+IF OBJECT_ID('dbo.SanPham', 'U') IS NOT NULL DROP TABLE dbo.SanPham;
+IF OBJECT_ID('dbo.KhoHang', 'U') IS NOT NULL DROP TABLE dbo.KhoHang;
+IF OBJECT_ID('dbo.DanhMuc', 'U') IS NOT NULL DROP TABLE dbo.DanhMuc;
+IF OBJECT_ID('dbo.KhachHang', 'U') IS NOT NULL DROP TABLE dbo.KhachHang;
+IF OBJECT_ID('dbo.NhanVien', 'U') IS NOT NULL DROP TABLE dbo.NhanVien;
+IF OBJECT_ID('dbo.ChiNhanh', 'U') IS NOT NULL DROP TABLE dbo.ChiNhanh;
+IF OBJECT_ID('dbo.NhatKyHeThong', 'U') IS NOT NULL DROP TABLE dbo.NhatKyHeThong;
 GO
 
 -- =========================================================================

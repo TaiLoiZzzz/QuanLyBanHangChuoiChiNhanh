@@ -44,13 +44,15 @@ BEGIN
         IF @TonHienTai IS NULL OR @TonHienTai < @SoLuong
             THROW 51001, N'Giao dịch thất bại: Hàng trong kho không đủ để giữ chỗ!', 1;
 
-        -- Tạo Header đơn hàng
+        -- Tạo Header đơn hàng với Tổng tiền tính toán trực tiếp
+        DECLARE @TongTien DECIMAL(14,2) = @SoLuong * @DonGiaBan;
+
         INSERT INTO DonHang (MaKH, MaNV, MaKhoXuat, NgayDat, TrangThai, TongTien)
-        VALUES (@MaKH, @MaNV, @MaKhoXuat, GETDATE(), 0, 0);
+        VALUES (@MaKH, @MaNV, @MaKhoXuat, GETDATE(), 0, @TongTien);
 
         DECLARE @NewMaDH INT = SCOPE_IDENTITY();
 
-        -- Tạo Chi tiết đơn hàng (Trigger 1 sẽ tự xử lý)
+        -- Tạo Chi tiết đơn hàng (Trigger 1 sẽ tự xử lý đồng bộ)
         INSERT INTO ChiTietDonHang (MaDH, MaSP, SoLuong, DonGiaBan)
         VALUES (@NewMaDH, @MaSP, @SoLuong, @DonGiaBan);
 
@@ -100,12 +102,16 @@ BEGIN
         IF @TrangThaiHienTai = 4
             THROW 51004, N'Đơn hàng này đã được hủy trước đó!', 1;
 
-        -- Hoàn trả lại số lượng tồn kho cho các sản phẩm trong đơn hàng
+        -- Hoàn trả lại số lượng tồn kho chính xác theo từng sản phẩm (Group by tránh trùng lặp)
         UPDATE tk
-        SET tk.SoLuongTon = tk.SoLuongTon + ct.SoLuong
+        SET tk.SoLuongTon = tk.SoLuongTon + del.TongSoLuongHoan
         FROM TonKho tk
-        INNER JOIN ChiTietDonHang ct ON tk.MaSP = ct.MaSP
-        WHERE ct.MaDH = @MaDH AND tk.MaKho = @MaKho;
+        INNER JOIN (
+            SELECT ct.MaSP, SUM(ct.SoLuong) AS TongSoLuongHoan
+            FROM ChiTietDonHang ct
+            WHERE ct.MaDH = @MaDH
+            GROUP BY ct.MaSP
+        ) del ON tk.MaSP = del.MaSP AND tk.MaKho = @MaKho;
 
         -- Cập nhật trạng thái đơn hàng sang 4 (Đã hủy)
         UPDATE DonHang
@@ -243,8 +249,11 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
-    BEGIN TRY
-        BEGIN TRANSACTION;
+        IF @SoLuong <= 0
+            THROW 51005, N'Số lượng điều chuyển phải lớn hơn 0!', 1;
+
+        IF @MaKhoXuat = @MaKhoNhap
+            THROW 51006, N'Kho xuất và kho nhập không được trùng nhau!', 1;
 
         -- TRIỆT TIÊU HOÀN TOÀN DEADLOCK BẰNG KỸ THUẬT LOCK ORDERING (MIN TRƯỚC, MAX SAU)
         -- Ngăn chặn Wait-For Graph khép kín khi 2 phiên cùng chuyển hàng chéo chiều nhau giữa 2 kho
