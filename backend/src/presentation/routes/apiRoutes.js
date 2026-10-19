@@ -7,6 +7,7 @@ const SqlServerInventoryRepository = require('../../infrastructure/repositories/
 const SqlServerProductRepository = require('../../infrastructure/repositories/SqlServerProductRepository');
 const SqlServerReportRepository = require('../../infrastructure/repositories/SqlServerReportRepository');
 const SqlServerAuthRepository = require('../../infrastructure/repositories/SqlServerAuthRepository');
+const SqlServerMasterRepository = require('../../infrastructure/repositories/SqlServerMasterRepository');
 
 // Use Cases
 const CreateOrderUseCase = require('../../core/usecases/CreateOrderUseCase');
@@ -24,6 +25,7 @@ const InventoryController = require('../controllers/InventoryController');
 const ProductController = require('../controllers/ProductController');
 const ReportController = require('../controllers/ReportController');
 const AuthController = require('../controllers/AuthController');
+const MasterDataController = require('../controllers/MasterDataController');
 
 // Instantiate dependencies (Dependency Injection)
 const orderRepo = new SqlServerOrderRepository();
@@ -31,6 +33,7 @@ const inventoryRepo = new SqlServerInventoryRepository();
 const productRepo = new SqlServerProductRepository();
 const reportRepo = new SqlServerReportRepository();
 const authRepo = new SqlServerAuthRepository();
+const masterRepo = new SqlServerMasterRepository();
 
 const createOrderUseCase = new CreateOrderUseCase(orderRepo);
 const getInvoiceDetailUseCase = new GetInvoiceDetailUseCase(orderRepo);
@@ -43,9 +46,10 @@ const loginByRoleUseCase = new LoginByRoleUseCase(authRepo);
 
 const orderController = new OrderController(createOrderUseCase, getInvoiceDetailUseCase, orderRepo);
 const inventoryController = new InventoryController(getInventoryReportUseCase, transferStockUseCase, inventoryRepo);
-const productController = new ProductController(searchProductsUseCase);
+const productController = new ProductController(searchProductsUseCase, productRepo);
 const reportController = new ReportController(getStaffKpiUseCase, getBranchRevenueUseCase, reportRepo);
 const authController = new AuthController(loginByRoleUseCase);
+const masterController = new MasterDataController(masterRepo);
 
 // =========================================================================
 // 1. AUTH ROUTE (4 Native SQL Server Roles)
@@ -53,7 +57,40 @@ const authController = new AuthController(loginByRoleUseCase);
 router.post('/auth/login', (req, res, next) => authController.login(req, res, next));
 
 // =========================================================================
-// 2. ORDER ROUTES (Bán hàng & Hóa đơn)
+// 2. MASTER DATA ROUTES (Chi nhánh, Kho hàng, Danh mục, Khách hàng, Nhân viên, Logs)
+// =========================================================================
+// Chi nhánh
+router.get('/branches', (req, res, next) => masterController.getBranches(req, res, next));
+router.post('/branches', (req, res, next) => masterController.createBranch(req, res, next));
+
+// Kho hàng
+router.get('/warehouses', (req, res, next) => masterController.getWarehouses(req, res, next));
+
+// Danh mục
+router.get('/categories', (req, res, next) => masterController.getCategories(req, res, next));
+
+// Khách hàng
+router.get('/customers', (req, res, next) => masterController.getCustomers(req, res, next));
+router.post('/customers', (req, res, next) => masterController.createCustomer(req, res, next));
+
+// Nhân viên
+router.get('/employees', (req, res, next) => masterController.getEmployees(req, res, next));
+router.post('/employees', (req, res, next) => masterController.createEmployee(req, res, next));
+
+// Nhật ký hệ thống
+router.get('/audit-logs', (req, res, next) => masterController.getAuditLogs(req, res, next));
+
+// =========================================================================
+// 3. PRODUCT ROUTES (Danh sách, Tìm kiếm, Thêm, Sửa, Xóa mềm)
+// =========================================================================
+router.get('/products', (req, res, next) => productController.getAll(req, res, next));
+router.get('/products/search', (req, res, next) => productController.search(req, res, next));
+router.post('/products', (req, res, next) => productController.create(req, res, next));
+router.put('/products/:id', (req, res, next) => productController.update(req, res, next));
+router.delete('/products/:id', (req, res, next) => productController.delete(req, res, next));
+
+// =========================================================================
+// 4. ORDER ROUTES (Bán hàng & Hóa đơn)
 // =========================================================================
 // Gọi SP 1: sp_TaoDonHangVaChiTiet
 router.post('/orders', (req, res, next) => orderController.create(req, res, next));
@@ -80,7 +117,7 @@ router.post('/orders/atomic-reserve', (req, res, next) => orderController.create
 router.post('/orders/:id/cancel-refund', (req, res, next) => orderController.cancelRefund(req, res, next));
 
 // =========================================================================
-// 3. INVENTORY ROUTES (Kho hàng & Điều chuyển)
+// 5. INVENTORY ROUTES (Kho hàng & Điều chuyển)
 // =========================================================================
 // Gọi View 1: v_BaoCaoTonKho_XepHang (Window Functions)
 router.get('/inventory/ranked-report', (req, res, next) => inventoryController.getReport(req, res, next));
@@ -92,13 +129,7 @@ router.post('/inventory/transfer', (req, res, next) => inventoryController.trans
 router.post('/inventory/inter-branch-transfer', (req, res, next) => inventoryController.transferInterBranch(req, res, next));
 
 // =========================================================================
-// 4. PRODUCT ROUTES (Tìm kiếm)
-// =========================================================================
-// Gọi SP 4: sp_TimKiemSanPhamNangCao (Dynamic Filters)
-router.get('/products/search', (req, res, next) => productController.search(req, res, next));
-
-// =========================================================================
-// 5. REPORT & HR ROUTES (Báo cáo tổng hợp, KPI & Quản trị nhân sự)
+// 6. REPORT & HR ROUTES (Báo cáo tổng hợp, KPI & Quản trị nhân sự)
 // =========================================================================
 // Gọi mTVF 4: fn_BaoCaoDoanhThuNhanVienChiTiet
 router.get('/reports/staff-kpi', (req, res, next) => reportController.getStaffKpi(req, res, next));
