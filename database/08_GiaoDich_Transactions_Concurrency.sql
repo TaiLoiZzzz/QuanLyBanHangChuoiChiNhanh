@@ -249,6 +249,9 @@ BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
 
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
         IF @SoLuong <= 0
             THROW 51005, N'Số lượng điều chuyển phải lớn hơn 0!', 1;
 

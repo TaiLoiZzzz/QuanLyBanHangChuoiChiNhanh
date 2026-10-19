@@ -1311,14 +1311,14 @@ GO
 -- Nghiệp vụ: Thu ngân tạo đơn hàng mới kèm sản phẩm đầu tiên trong 1 giao dịch
 -- Kỹ thuật: TRY...CATCH, XACT_STATE(), OUTPUT parameter, Transaction an toàn
 -- =========================================================================
-CREATE PROCEDURE dbo.sp_TaoDonHangVaChiTiet
+CREATE OR ALTER PROCEDURE dbo.sp_TaoDonHangVaChiTiet
     @MaKH INT,
     @MaNV INT,
     @MaKhoXuat INT,
     @MaSP INT,
     @SoLuong INT,
     @DonGiaBan DECIMAL(12,2),
-    @MaDH_Moi INT OUTPUT
+    @MaDH_Moi INT = NULL OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1366,6 +1366,7 @@ BEGIN
         VALUES (@MaDH_Moi, @MaSP, @SoLuong, @DonGiaBan);
 
         COMMIT TRANSACTION;
+        SELECT @MaDH_Moi AS MaDH;
         RETURN 0; -- Thành công mã lỗi 0
     END TRY
     BEGIN CATCH
@@ -1865,6 +1866,9 @@ AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
 
         IF @SoLuong <= 0
             THROW 51005, N'Số lượng điều chuyển phải lớn hơn 0!', 1;
