@@ -83,14 +83,26 @@ GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.usp_Tx_XoaNhanVienVaDieuChuyenQuanLy TO Role_QuanLyChiNhanh;
 GRANT EXECUTE ON dbo.usp_Tx_ThangHangThanhVienHangLoat TO Role_QuanLyChiNhanh;
+
+-- Nghiệp vụ Bán hàng & Quản lý Đơn hàng (POS)
+GRANT SELECT ON dbo.fn_DanhSachDonHangTheoKhoangThoiGian TO Role_QuanLyChiNhanh;
+GRANT SELECT ON v_InHoaDon_ChiTietPhucHop TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.sp_TaoDonHangVaChiTiet TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.sp_CapNhatTrangThaiDonHang TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_DatHangVaGiuCho TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_HuyDonHangVaHoanTonKho TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.fn_TinhTienSauChietKhauVIP TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.fn_KiemTraKhaNangDapUngDonHang TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.fn_FormatMaHoaDonTuDong TO Role_QuanLyChiNhanh;
+
 GRANT SELECT ON ChiNhanh TO Role_QuanLyChiNhanh;
 GRANT SELECT ON KhoHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON TonKho TO Role_QuanLyChiNhanh;
 GRANT SELECT ON SanPham TO Role_QuanLyChiNhanh;
 GRANT SELECT ON DanhMuc TO Role_QuanLyChiNhanh;
-GRANT SELECT ON KhachHang TO Role_QuanLyChiNhanh;
-GRANT SELECT ON DonHang TO Role_QuanLyChiNhanh;
-GRANT SELECT ON ChiTietDonHang TO Role_QuanLyChiNhanh;
+GRANT SELECT, INSERT, UPDATE ON KhachHang TO Role_QuanLyChiNhanh;
+GRANT SELECT, INSERT, UPDATE ON DonHang TO Role_QuanLyChiNhanh;
+GRANT SELECT, INSERT, UPDATE ON ChiTietDonHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON NhatKyHeThong TO Role_QuanLyChiNhanh;
 -- BẢO MẬT CẤP CỘT (COLUMN-LEVEL SECURITY - LEAST PRIVILEGE):
 -- Cho phép xem thông tin định danh nhân sự để liên kết chi nhánh/kho, cấm tuyệt đối cột Luong (Error 229 nếu cố truy vấn)
@@ -102,6 +114,7 @@ GO
 -- Được tạo đơn, in hóa đơn, tìm khách, tra sản phẩm và chạy các hàm/giao dịch bán hàng
 GRANT EXECUTE ON dbo.sp_TaoDonHangVaChiTiet TO Role_ThuNgan;
 GRANT EXECUTE ON dbo.sp_CapNhatTrangThaiDonHang TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_ThuNgan;
 GRANT EXECUTE ON dbo.usp_Tx_DatHangVaGiuCho TO Role_ThuNgan;
 GRANT EXECUTE ON dbo.usp_Tx_HuyDonHangVaHoanTonKho TO Role_ThuNgan;
 GRANT EXECUTE ON dbo.fn_TinhTienSauChietKhauVIP TO Role_ThuNgan;
@@ -134,6 +147,8 @@ GRANT SELECT ON KhoHang TO Role_ThuKho;
 GRANT SELECT ON SanPham TO Role_ThuKho;
 GRANT SELECT ON DanhMuc TO Role_ThuKho;
 GRANT EXECUTE ON dbo.sp_ChuyenKhoNoiBo TO Role_ThuKho;
+GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_ThuKho;
+GRANT EXECUTE ON dbo.fn_KiemTraKhaNangDapUngDonHang TO Role_ThuKho;
 GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_ThuKho;
 -- BẢO MẬT: CẤM XEM THÔNG TIN KHÁCH HÀNG, ĐƠN HÀNG, NHÂN SỰ
 DENY SELECT ON KhachHang TO Role_ThuKho;
