@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DBMS330284 - Hệ Thống Bán Hàng & Chuỗi Tồn Kho</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 600; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-blue-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">HỆ THỐNG QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH</h1>
+        <p class="text-xs text-blue-200">Học phần: DBMS330284 - TS. Phan Thị Thể | Trưởng nhóm: Quách Tài Lợi (70%)</p>
+      </div>
+
+      <!-- User Role Selector -->
+      <div class="flex items-center gap-2 bg-blue-950 px-3 py-1.5 rounded-lg border border-blue-700 text-sm">
+        <span class="text-blue-300 font-medium">Tài khoản CSDL:</span>
+        <select id="roleSelector" onchange="switchDbRole()" class="bg-blue-900 text-white rounded px-2 py-1 text-xs border border-blue-600 focus:outline-none">
+          <option value="sa|PasswordAdmin@2026">sa (System Administrator)</option>
+          <option value="Login_Admin|AdminPassword@2026">Login_Admin (Role_Admin)</option>
+          <option value="Login_QuanLyChiNhanh|ManagerPassword@2026">Login_QuanLyChiNhanh (Role_QuanLyChiNhanh)</option>
+          <option value="Login_ThuNgan|CashierPassword@2026">Login_ThuNgan (Role_ThuNgan)</option>
+          <option value="Login_ThuKho|StockPassword@2026">Login_ThuKho (Role_ThuKho)</option>
+        </select>
+        <span id="roleBadge" class="bg-green-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">sysadmin</span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-7xl mx-auto px-4 flex gap-6 text-sm overflow-x-auto border-t border-blue-800">
+      <button onclick="showTab('pos')" id="tab-pos" class="py-3 px-2 tab-active text-white">1. Bán Hàng POS & Hóa Đơn (SP1 & View 4)</button>
+      <button onclick="showTab('inventory')" id="tab-inventory" class="py-3 px-2 text-blue-200 hover:text-white">2. Báo Cáo Tồn Kho (View 1)</button>
+      <button onclick="showTab('transfer')" id="tab-transfer" class="py-3 px-2 text-blue-200 hover:text-white">3. Điều Chuyển Kho (SP3 & SP4)</button>
+      <button onclick="showTab('reports')" id="tab-reports" class="py-3 px-2 text-blue-200 hover:text-white">4. Doanh Thu & KPI Nhân Viên (Function 4 & SP5)</button>
+    </div>
+  </header>
+
+  <!-- Notification Banner -->
+  <div id="alertBanner" class="hidden max-w-7xl mx-auto px-4 mt-4 w-full">
+    <div id="alertContent" class="p-3 rounded-lg text-sm border flex justify-between items-center">
+      <span id="alertMessage"></span>
+      <button onclick="document.getElementById('alertBanner').classList.add('hidden')" class="font-bold ml-4">✕</button>
+    </div>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
+
+    <!-- TAB 1: POS & INVOICE -->
+    <section id="pane-pos" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Form Tạo Đơn Hàng (Calls sp_TaoDonHangVaChiTiet) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <h2 class="font-bold text-base text-slate-800 border-b pb-2 flex items-center justify-between">
+            <span>Tạo Đơn Hàng Mới</span>
+            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono">sp_TaoDonHangVaChiTiet</span>
+          </h2>
+          <form id="orderForm" onsubmit="createOrder(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Khách Hàng:</label>
+              <select id="ordMaKH" class="w-full border rounded px-2.5 py-1.5 focus:ring-1 focus:ring-blue-500">
+                <option value="1">1 - Phạm Hoàng Khách (Khách Thường - 0%)</option>
+                <option value="2">2 - Vũ Thị VIP (Khách VIP - Giảm 10%)</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Nhân Viên Bán:</label>
+                <select id="ordMaNV" class="w-full border rounded px-2.5 py-1.5">
+                  <option value="2">NV 2 - Trần Thị Thu Ngân</option>
+                  <option value="3">NV 3 - Lê Văn Thủ Kho</option>
+                  <option value="1">NV 1 - Nguyễn Văn Quản Lý</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Kho Xuất Hàng:</label>
+                <select id="ordMaKho" class="w-full border rounded px-2.5 py-1.5">
+                  <option value="1">Kho 1 - Trung Tâm Q.1</option>
+                  <option value="2">Kho 2 - Chi Nhánh Thủ Đức</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Sản Phẩm Đặt Mua:</label>
+              <select id="ordMaSP" class="w-full border rounded px-2.5 py-1.5">
+                <option value="1" data-price="150000">SP 1 - Áo Thun Cotton Basic (150.000 đ)</option>
+                <option value="2" data-price="350000">SP 2 - Áo Sơ Mi Oxford (350.000 đ)</option>
+                <option value="3" data-price="450000">SP 3 - Quần Jean Slimfit (450.000 đ)</option>
+                <option value="4" data-price="250000">SP 4 - Ví Da Nam Cầm Tay (250.000 đ)</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Số Lượng:</label>
+                <input type="number" id="ordSoLuong" value="2" min="1" class="w-full border rounded px-2.5 py-1.5" required>
+              </div>
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Đơn Giá (VNĐ):</label>
+                <input type="number" id="ordDonGia" value="150000" class="w-full border rounded px-2.5 py-1.5" required>
+              </div>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition mt-2">
+              Xác Nhận Đặt Hàng & Trừ Kho
+            </button>
+            <p class="text-[11px] text-slate-400 italic">Thao tác kích hoạt Stored Procedure và Trigger kiểm tra tồn kho</p>
+          </form>
+        </div>
+
+        <!-- Chi Tiết Hóa Đơn (Calls View v_InHoaDon_ChiTietPhucHop) -->
+        <div class="md:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Hóa Đơn Bán Hàng Chi Tiết</h2>
+              <p class="text-xs text-slate-500">Dữ liệu kết xuất từ VIEW: <code class="text-blue-700 font-mono">v_InHoaDon_ChiTietPhucHop</code></p>
+            </div>
+            <div class="flex gap-2">
+              <input type="number" id="searchMaDH" value="1" placeholder="Mã ĐH" class="w-20 border rounded px-2 py-1 text-xs">
+              <button onclick="loadInvoice(document.getElementById('searchMaDH').value)" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3 py-1 rounded">
+                Xem Hóa Đơn
+              </button>
+            </div>
+          </div>
+
+          <div id="invoiceViewContainer" class="p-4 bg-slate-50 rounded-lg border border-dashed border-slate-300 min-h-[260px] flex items-center justify-center text-xs text-slate-400">
+            Nhập mã đơn hàng và bấm "Xem Hóa Đơn" để kết xuất chứng từ.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 2: INVENTORY REPORT -->
+    <section id="pane-inventory" class="hidden space-y-4">
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex justify-between items-center border-b pb-3 mb-4">
+          <div>
+            <h2 class="font-bold text-base text-slate-800">Báo Cáo Tồn Kho & Xếp Hạng Nguy Cơ Hết Hàng</h2>
+            <p class="text-xs text-slate-500">Truy vấn từ VIEW: <code class="text-blue-700 font-mono">v_BaoCaoTonKho_XepHang</code> (Sử dụng Window Functions)</p>
+          </div>
+          <button onclick="loadInventoryReport()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded">
+            Làm Mới Số Liệu
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600 border-b">
+                <th class="p-2.5">Chi Nhánh</th>
+                <th class="p-2.5">Kho Hàng</th>
+                <th class="p-2.5">Sản Phẩm</th>
+                <th class="p-2.5">Danh Mục</th>
+                <th class="p-2.5 text-right">Tồn Kho</th>
+                <th class="p-2.5 text-right">Tỷ Trọng Kho</th>
+                <th class="p-2.5 text-center">Hạng Khan Hiếm</th>
+                <th class="p-2.5 text-right">Tổng Vốn Tồn</th>
+                <th class="p-2.5 text-center">Trạng Thái</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryTableBody" class="divide-y divide-slate-100">
+              <tr><td colspan="9" class="p-4 text-center text-slate-400">Đang tải dữ liệu...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: TRANSFER & SEARCH -->
+    <section id="pane-transfer" class="hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Form Điều Chuyển Kho (Calls sp_ChuyenKhoNoiBo) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="border-b pb-2">
+            <h2 class="font-bold text-base text-slate-800">Điều Chuyển Kho Hàng Hóa Nội Bộ</h2>
+            <p class="text-xs text-slate-500">Kích hoạt Stored Procedure: <code class="text-blue-700 font-mono">sp_ChuyenKhoNoiBo</code> (Transaction ACID)</p>
+          </div>
+          <form onsubmit="transferStock(event)" class="space-y-3 text-xs">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium mb-1">Kho Xuất Hàng:</label>
+                <select id="transKhoXuat" class="w-full border rounded px-2.5 py-1.5">
+                  <option value="1">Kho 1 - Trung Tâm Q.1</option>
+                  <option value="2">Kho 2 - Chi Nhánh Thủ Đức</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-medium mb-1">Kho Nhập Hàng:</label>
+                <select id="transKhoNhap" class="w-full border rounded px-2.5 py-1.5">
+                  <option value="2">Kho 2 - Chi Nhánh Thủ Đức</option>
+                  <option value="1">Kho 1 - Trung Tâm Q.1</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Sản Phẩm Điều Chuyển:</label>
+              <select id="transMaSP" class="w-full border rounded px-2.5 py-1.5">
+                <option value="1">SP 1 - Áo Thun Cotton Basic</option>
+                <option value="2">SP 2 - Áo Sơ Mi Oxford</option>
+                <option value="3">SP 3 - Quần Jean Slimfit</option>
+                <option value="4">SP 4 - Ví Da Nam Cầm Tay</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium mb-1">Số Lượng Chuyển:</label>
+              <input type="number" id="transSoLuong" value="5" min="1" class="w-full border rounded px-2.5 py-1.5" required>
+            </div>
+            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded transition">
+              Thực Hiện Điều Chuyển Kho
+            </button>
+          </form>
+        </div>
+
+        <!-- Tìm Kiếm Sản Phẩm Đa Tiêu Chí (Calls sp_TimKiemSanPhamNangCao) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="border-b pb-2">
+            <h2 class="font-bold text-base text-slate-800">Tìm Kiếm Sản Phẩm Nâng Cao</h2>
+            <p class="text-xs text-slate-500">Kích hoạt Stored Procedure: <code class="text-blue-700 font-mono">sp_TimKiemSanPhamNangCao</code></p>
+          </div>
+          <div class="flex gap-2 text-xs">
+            <input type="text" id="searchKeyword" placeholder="Từ khóa tên sản phẩm..." class="flex-1 border rounded px-2.5 py-1.5">
+            <button onclick="searchProducts()" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded">
+              Tìm Kiếm
+            </button>
+          </div>
+          <div id="productSearchResult" class="overflow-y-auto max-h-[220px] text-xs">
+            <p class="text-slate-400 text-center py-4">Nhập từ khóa và bấm "Tìm Kiếm".</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 4: REPORTS & KPI -->
+    <section id="pane-reports" class="hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Báo Cáo KPI Nhân Viên (Calls fn_BaoCaoDoanhThuNhanVienChiTiet) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Hiệu Suất & KPI Nhân Viên</h2>
+              <p class="text-xs text-slate-500">Hàm: <code class="text-blue-700 font-mono">fn_BaoCaoDoanhThuNhanVienChiTiet(@Nam)</code></p>
+            </div>
+            <button onclick="loadKpiReport()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1 rounded">
+              Lấy Số Liệu 2026
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="bg-slate-100 text-slate-600">
+                  <th class="p-2">Mã NV</th>
+                  <th class="p-2">Họ Tên</th>
+                  <th class="p-2">Chi Nhánh</th>
+                  <th class="p-2 text-center">Đơn Chốt</th>
+                  <th class="p-2 text-right">Doanh Số</th>
+                  <th class="p-2 text-center">Đánh Giá</th>
+                </tr>
+              </thead>
+              <tbody id="kpiTableBody" class="divide-y divide-slate-100">
+                <tr><td colspan="6" class="p-4 text-center text-slate-400">Bấm "Lấy Số Liệu" để xem báo cáo KPI.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Báo Cáo Doanh Thu Chi Nhánh (Calls sp_BaoCaoTongHopDoanhThuChiNhanh) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Tổng Hợp Doanh Thu Chi Nhánh</h2>
+              <p class="text-xs text-slate-500">Thủ tục: <code class="text-blue-700 font-mono">sp_BaoCaoTongHopDoanhThuChiNhanh</code></p>
+            </div>
+            <button onclick="loadBranchRevenue()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-2.5 py-1 rounded">
+              Tổng Hợp
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="bg-slate-100 text-slate-600">
+                  <th class="p-2">Chi Nhánh</th>
+                  <th class="p-2 text-center">Số Đơn</th>
+                  <th class="p-2 text-right">Sản Phẩm Đã Bán</th>
+                  <th class="p-2 text-right">Doanh Thu Gốc</th>
+                  <th class="p-2 text-right">Tổng Thu Thực Tế (+VAT)</th>
+                </tr>
+              </thead>
+              <tbody id="branchRevenueBody" class="divide-y divide-slate-100">
+                <tr><td colspan="5" class="p-4 text-center text-slate-400">Bấm "Tổng Hợp" để xem dữ liệu.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 text-center py-3 text-xs text-slate-500">
+    Đồ án cuối kỳ môn Hệ quản trị CSDL (DBMS330284) - TS. Phan Thị Thể | FIT - HCMUTE | Nhóm Quách Tài Lợi
+  </footer>
+
+  <!-- Frontend Logic Script -->
+  <script>
+    let currentDbUser = 'sa';
+    let currentDbPassword = 'PasswordAdmin@2026';
+
+    function switchDbRole() {
+      const val = document.getElementById('roleSelector').value;
+      const [u, p] = val.split('|');
+      currentDbUser = u;
+      currentDbPassword = p;
+
+      const badge = document.getElementById('roleBadge');
+      if (u === 'sa') badge.innerText = 'sysadmin';
+      else if (u === 'Login_Admin') badge.innerText = 'Role_Admin';
+      else if (u === 'Login_QuanLyChiNhanh') badge.innerText = 'Role_QuanLy';
+      else if (u === 'Login_ThuNgan') badge.innerText = 'Role_ThuNgan';
+      else if (u === 'Login_ThuKho') badge.innerText = 'Role_ThuKho';
+
+      showAlert(`Đã chuyển phiên làm việc sang tài khoản CSDL: [${u}]`, 'info');
+    }
+
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'X-DB-User': currentDbUser,
+        'X-DB-Password': currentDbPassword
+      };
+    }
+
+    function showAlert(msg, type = 'success') {
+      const banner = document.getElementById('alertBanner');
+      const content = document.getElementById('alertContent');
+      const msgEl = document.getElementById('alertMessage');
+
+      msgEl.innerText = msg;
+      banner.classList.remove('hidden');
+
+      if (type === 'error') {
+        content.className = 'p-3 rounded-lg text-sm border bg-red-50 text-red-800 border-red-200 flex justify-between items-center';
+      } else if (type === 'info') {
+        content.className = 'p-3 rounded-lg text-sm border bg-blue-50 text-blue-800 border-blue-200 flex justify-between items-center';
+      } else {
+        content.className = 'p-3 rounded-lg text-sm border bg-emerald-50 text-emerald-800 border-emerald-200 flex justify-between items-center';
+      }
+    }
+
+    function showTab(tabId) {
+      ['pos', 'inventory', 'transfer', 'reports'].forEach(id => {
+        document.getElementById(`pane-${id}`).classList.add('hidden');
+        document.getElementById(`tab-${id}`).className = 'py-3 px-2 text-blue-200 hover:text-white';
+      });
+      document.getElementById(`pane-${tabId}`).classList.remove('hidden');
+      document.getElementById(`tab-${tabId}`).className = 'py-3 px-2 tab-active text-white';
+
+      if (tabId === 'inventory') loadInventoryReport();
+      if (tabId === 'reports') { loadKpiReport(); loadBranchRevenue(); }
+    }
+
+    async function createOrder(e) {
+      e.preventDefault();
+      const payload = {
+        maKH: Number(document.getElementById('ordMaKH').value),
+        maNV: Number(document.getElementById('ordMaNV').value),
+        maKhoXuat: Number(document.getElementById('ordMaKho').value),
+        maSP: Number(document.getElementById('ordMaSP').value),
+        soLuong: Number(document.getElementById('ordSoLuong').value),
+        donGiaBan: Number(document.getElementById('ordDonGia').value)
+      };
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Tạo đơn hàng thành công! Mã ĐH mới: ${data.maDH}`, 'success');
+        document.getElementById('searchMaDH').value = data.maDH;
+        loadInvoice(data.maDH);
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadInvoice(maDH) {
+      try {
+        const res = await fetch(`/api/orders/${maDH}/invoice`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        if (!data.items || data.items.length === 0) {
+          document.getElementById('invoiceViewContainer').innerHTML = `<p class="text-amber-600">Không tìm thấy chi tiết cho đơn hàng #${maDH}</p>`;
+          return;
+        }
+
+        const inv = data.items[0];
+        let itemsHtml = data.items.map(it => `
+          <tr class="border-b">
+            <td class="p-2">${it.TenSP}</td>
+            <td class="p-2 text-center">${it.SoLuong} ${it.DonViTinh}</td>
+            <td class="p-2 text-right">${Number(it.DonGiaBan).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-right font-medium">${Number(it.TienGoc).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-right text-emerald-700">-${Number(it.TienChietKhau).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-right text-slate-500">+${Number(it.ThueVAT8Pct).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-right font-bold text-blue-900">${Number(it.TongThanhToanCuoiCung).toLocaleString('vi-VN')} đ</td>
+          </tr>
+        `).join('');
+
+        document.getElementById('invoiceViewContainer').innerHTML = `
+          <div class="w-full bg-white p-4 rounded border text-slate-700 space-y-3">
+            <div class="flex justify-between items-start border-b pb-2">
+              <div>
+                <h3 class="font-bold text-sm text-blue-900">HÓA ĐƠN BÁN HÀNG #${inv.MaDH}</h3>
+                <p class="text-[11px] text-slate-500">Ngày đặt: ${new Date(inv.NgayDat).toLocaleString('vi-VN')}</p>
+                <p class="text-[11px] text-slate-500">Kho xuất: <b>${inv.KhoXuatHang}</b> | NV lập: <b>${inv.NhanVienLapDon}</b></p>
+              </div>
+              <div class="text-right">
+                <span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded">${inv.TenTrangThai}</span>
+                <p class="text-[11px] mt-1">Khách: <b>${inv.TenKhachHang}</b> (${inv.SoDTKhachHang})</p>
+                <p class="text-[11px] text-emerald-700 font-semibold">${inv.HangThanhVien}</p>
+              </div>
+            </div>
+
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="bg-slate-50 text-slate-500 border-b">
+                  <th class="p-2">Sản Phẩm</th>
+                  <th class="p-2 text-center">SL</th>
+                  <th class="p-2 text-right">Đơn Giá</th>
+                  <th class="p-2 text-right">Tiền Gốc</th>
+                  <th class="p-2 text-right">Chiết Khấu</th>
+                  <th class="p-2 text-right">VAT 8%</th>
+                  <th class="p-2 text-right">Thành Tiền</th>
+                </tr>
+              </thead>
+              <tbody>${itemsHtml}</tbody>
+            </table>
+          </div>
+        `;
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadInventoryReport() {
+      try {
+        const res = await fetch('/api/inventory/ranked-report', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('inventoryTableBody');
+        tbody.innerHTML = data.report.map(r => {
+          let badgeClass = 'bg-blue-100 text-blue-800';
+          if (r.TrangThaiTonKho.includes('CẢNH BÁO')) badgeClass = 'bg-red-100 text-red-800 font-bold';
+          else if (r.TrangThaiTonKho === 'HẾT HÀNG') badgeClass = 'bg-slate-800 text-white font-bold';
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="p-2.5 font-medium">${r.TenCN}</td>
+              <td class="p-2.5 text-slate-500">${r.TenKho}</td>
+              <td class="p-2.5 font-semibold text-slate-800">${r.TenSP}</td>
+              <td class="p-2.5 text-slate-500">${r.TenDM}</td>
+              <td class="p-2.5 text-right font-bold">${r.SoLuongTon} ${r.DonViTinh}</td>
+              <td class="p-2.5 text-right text-slate-600">${r.TyTrongTonKhoPct} %</td>
+              <td class="p-2.5 text-center font-bold text-blue-700">#${r.HangKhanHiemTaiChiNhanh}</td>
+              <td class="p-2.5 text-right font-medium">${Number(r.TongGiaTriTonKho).toLocaleString('vi-VN')} đ</td>
+              <td class="p-2.5 text-center"><span class="${badgeClass} px-2 py-0.5 rounded text-[11px]">${r.TrangThaiTonKho}</span></td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function transferStock(e) {
+      e.preventDefault();
+      const payload = {
+        maKhoXuat: Number(document.getElementById('transKhoXuat').value),
+        maKhoNhap: Number(document.getElementById('transKhoNhap').value),
+        maSP: Number(document.getElementById('transMaSP').value),
+        soLuong: Number(document.getElementById('transSoLuong').value)
+      };
+
+      try {
+        const res = await fetch('/api/inventory/transfer', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert('Điều chuyển kho thành công!', 'success');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function searchProducts() {
+      const keyword = document.getElementById('searchKeyword').value;
+      try {
+        const res = await fetch(`/api/products/search?tuKhoa=${encodeURIComponent(keyword)}`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const container = document.getElementById('productSearchResult');
+        if (data.products.length === 0) {
+          container.innerHTML = '<p class="text-slate-400 text-center py-4">Không tìm thấy sản phẩm nào.</p>';
+          return;
+        }
+
+        container.innerHTML = `
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="bg-slate-50 text-slate-500 border-b">
+                <th class="p-1.5">Sản Phẩm</th>
+                <th class="p-1.5">Danh Mục</th>
+                <th class="p-1.5 text-right">Giá Bán</th>
+                <th class="p-1.5 text-right">Tổng Tồn Kho</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.products.map(p => `
+                <tr class="border-b hover:bg-slate-50">
+                  <td class="p-1.5 font-medium">${p.TenSP}</td>
+                  <td class="p-1.5 text-slate-500">${p.TenDM}</td>
+                  <td class="p-1.5 text-right font-bold text-blue-900">${Number(p.GiaBanHienTai).toLocaleString('vi-VN')} đ</td>
+                  <td class="p-1.5 text-right">${p.TongTonKhoToanHeThong} ${p.DonViTinh}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadKpiReport() {
+      try {
+        const res = await fetch('/api/reports/staff-kpi?year=2026', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('kpiTableBody');
+        tbody.innerHTML = data.report.map(k => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-mono text-slate-500">NV-${k.MaNV}</td>
+            <td class="p-2 font-semibold text-slate-800">${k.HoTen}</td>
+            <td class="p-2 text-slate-500">${k.TenChiNhanh}</td>
+            <td class="p-2 text-center font-bold">${k.SoDonHangDaChot}</td>
+            <td class="p-2 text-right font-bold text-blue-900">${Number(k.TongDoanhSo).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-center"><span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-medium">${k.DanhGiaKPI}</span></td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadBranchRevenue() {
+      try {
+        const res = await fetch('/api/reports/branch-revenue?year=2026', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('branchRevenueBody');
+        tbody.innerHTML = data.report.map(b => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-bold text-slate-800">${b.TenCN}</td>
+            <td class="p-2 text-center">${b.TongSoDonHang}</td>
+            <td class="p-2 text-right">${b.TongSoLuongSanPhamBan}</td>
+            <td class="p-2 text-right font-medium">${Number(b.DoanhThuBanHang).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-right font-bold text-emerald-800">${Number(b.TongThuThucTe).toLocaleString('vi-VN')} đ</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    // Auto-load invoice on launch
+    window.addEventListener('DOMContentLoaded', () => {
+      loadInvoice(1);
+    });
+  </script>
+</body>
+</html>
