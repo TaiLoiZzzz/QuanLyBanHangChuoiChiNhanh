@@ -66,6 +66,7 @@ BEGIN
         VALUES (@MaDH_Moi, @MaSP, @SoLuong, @DonGiaBan);
 
         COMMIT TRANSACTION;
+        RETURN 0; -- Thành công mã lỗi 0
     END TRY
     BEGIN CATCH
         IF XACT_STATE() <> 0
@@ -75,6 +76,7 @@ BEGIN
         DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
         DECLARE @ErrorState INT = ERROR_STATE();
         RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
+        RETURN 1; -- Thất bại mã lỗi 1
     END CATCH;
 END;
 GO
@@ -115,10 +117,12 @@ BEGIN
         WHERE MaDH = @MaDH;
 
         SELECT N'Cập nhật trạng thái đơn hàng thành công!' AS ThongBao, @MaDH AS MaDH, @TrangThaiMoi AS TrangThaiMoi;
+        RETURN 0;
     END TRY
     BEGIN CATCH
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         RAISERROR(@ErrorMessage, 16, 1);
+        RETURN 1;
     END CATCH;
 END;
 GO
@@ -192,6 +196,7 @@ BEGIN
         COMMIT TRANSACTION;
 
         SELECT N'Điều chuyển kho thành công!' AS ThongBao, @MaKhoXuat AS KhoXuat, @MaKhoNhap AS KhoNhap, @SoLuongChuyen AS SoLuong;
+        RETURN 0;
     END TRY
     BEGIN CATCH
         IF XACT_STATE() <> 0
@@ -199,6 +204,7 @@ BEGIN
 
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         RAISERROR(@ErrorMessage, 16, 1);
+        RETURN 1;
     END CATCH;
 END;
 GO
@@ -240,10 +246,12 @@ BEGIN
           AND (@GiaMax IS NULL OR sp.GiaBanHienTai <= @GiaMax)
         GROUP BY sp.MaSP, sp.TenSP, dm.MaDM, dm.TenDM, sp.GiaBanHienTai, sp.DonViTinh
         ORDER BY sp.GiaBanHienTai ASC;
+        RETURN 0;
     END TRY
     BEGIN CATCH
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         RAISERROR(@ErrorMessage, 16, 1);
+        RETURN 1;
     END CATCH;
 END;
 GO
@@ -282,10 +290,12 @@ BEGIN
         LEFT JOIN ChiTietDonHang ct ON dh.MaDH = ct.MaDH
         GROUP BY cn.MaCN, cn.TenCN
         ORDER BY DoanhThuBanHang DESC;
+        RETURN 0;
     END TRY
     BEGIN CATCH
         DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
         RAISERROR(@ErrorMessage, 16, 1);
+        RETURN 1;
     END CATCH;
 END;
 GO
