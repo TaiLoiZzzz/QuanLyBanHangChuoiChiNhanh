@@ -75,12 +75,17 @@ export function canPerformAction(role, action) {
     case 'DELETE_PRODUCT':
       return role === ROLES.ADMIN || role === ROLES.MANAGER;
 
-    // Quản lý nhân sự & chi nhánh
+    // Quản lý nhân sự & chi nhánh & khách hàng
     case 'ADD_BRANCH':
     case 'ADD_EMPLOYEE':
     case 'REORGANIZE_STAFF': // Tx 3
+    case 'REORGANIZE_EMPLOYEES':
     case 'BATCH_PROMOTE_VIP': // Tx 4
+    case 'BATCH_PROMOTE_CUSTOMERS':
       return role === ROLES.ADMIN || role === ROLES.MANAGER;
+
+    case 'ADD_CUSTOMER':
+      return role === ROLES.ADMIN || role === ROLES.MANAGER || role === ROLES.CASHIER;
 
     case 'VIEW_RAW_SALARY':
       // Chỉ Admin / sa mới được xem trực tiếp bảng lương thô NhanVien

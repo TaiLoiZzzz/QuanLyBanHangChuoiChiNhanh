@@ -1,4 +1,4 @@
-﻿-- =========================================================================
+-- =========================================================================
 -- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
 -- GIẢNG VIÊN HƯỚNG DẪN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
@@ -2050,9 +2050,10 @@ GRANT SELECT ON DanhMuc TO Role_QuanLyChiNhanh;
 GRANT SELECT ON KhachHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON DonHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON ChiTietDonHang TO Role_QuanLyChiNhanh;
-GRANT SELECT ON NhatKyHeThong TO Role_QuanLyChiNhanh;
--- DENY xem trực tiếp bảng lương nhạy cảm (bắt buộc xem qua View)
-DENY SELECT ON NhanVien TO Role_QuanLyChiNhanh;
+-- BẢO MẬT CẤP CỘT (COLUMN-LEVEL SECURITY - LEAST PRIVILEGE):
+-- Cho phép xem thông tin định danh nhân sự để liên kết chi nhánh/kho, cấm tuyệt đối cột Luong (Error 229 nếu cố truy vấn)
+REVOKE SELECT ON dbo.NhanVien FROM Role_QuanLyChiNhanh;
+GRANT SELECT(MaNV, HoTen, MaCN, MaQL, DaXoa) ON dbo.NhanVien TO Role_QuanLyChiNhanh;
 GO
 
 -- ROLE 3: THU NGÂN / CASHIER (HUỲNH VĂN BÌNH - 20%)
@@ -2075,7 +2076,8 @@ GRANT SELECT ON DanhMuc TO Role_ThuNgan;
 GRANT SELECT ON DonHang TO Role_ThuNgan;
 GRANT SELECT ON ChiTietDonHang TO Role_ThuNgan;
 -- BẢO MẬT: CẤM TUYỆT ĐỐI XEM LƯƠNG HOẶC XÓA BẤT KỲ DỮ LIỆU NÀO TRỰC TIẾP
-DENY SELECT ON NhanVien TO Role_ThuNgan;
+REVOKE SELECT ON dbo.NhanVien FROM Role_ThuNgan;
+GRANT SELECT(MaNV, HoTen, MaCN, MaQL, DaXoa) ON dbo.NhanVien TO Role_ThuNgan;
 DENY DELETE ON DonHang TO Role_ThuNgan;
 DENY DELETE ON ChiTietDonHang TO Role_ThuNgan;
 DENY SELECT ON LichSuGia TO Role_ThuNgan;
@@ -2095,7 +2097,8 @@ GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_ThuKho;
 DENY SELECT ON KhachHang TO Role_ThuKho;
 DENY SELECT ON DonHang TO Role_ThuKho;
 DENY SELECT ON ChiTietDonHang TO Role_ThuKho;
-DENY SELECT ON NhanVien TO Role_ThuKho;
+REVOKE SELECT ON dbo.NhanVien FROM Role_ThuKho;
+GRANT SELECT(MaNV, HoTen, MaCN, MaQL, DaXoa) ON dbo.NhanVien TO Role_ThuKho;
 GO
 
 -- MA TRẬN BẢO MẬT & KIỂM THỬ XÁC THỰC RLS (TRẦN NHẬT TÂN - 20%)

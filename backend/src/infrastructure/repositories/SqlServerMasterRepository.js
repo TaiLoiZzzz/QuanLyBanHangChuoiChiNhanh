@@ -6,18 +6,36 @@ class SqlServerMasterRepository {
   async getBranches(userContext) {
     const pool = await connectionFactory.getPool(userContext?.user, userContext?.password);
     const request = pool.request();
-    const query = `
-      SELECT cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT,
-             COUNT(DISTINCT k.MaKho) AS SoKhoHang,
-             COUNT(DISTINCT nv.MaNV) AS SoNhanVien
-      FROM ChiNhanh cn
-      LEFT JOIN KhoHang k ON cn.MaCN = k.MaCN
-      LEFT JOIN NhanVien nv ON cn.MaCN = nv.MaCN AND nv.DaXoa = 0
-      GROUP BY cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT
-      ORDER BY cn.MaCN ASC;
-    `;
-    const result = await request.query(query);
-    return result.recordset;
+    try {
+      const query = `
+        SELECT cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT,
+               COUNT(DISTINCT k.MaKho) AS SoKhoHang,
+               COUNT(DISTINCT nv.MaNV) AS SoNhanVien
+        FROM ChiNhanh cn
+        LEFT JOIN KhoHang k ON cn.MaCN = k.MaCN
+        LEFT JOIN NhanVien nv ON cn.MaCN = nv.MaCN AND nv.DaXoa = 0
+        GROUP BY cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT
+        ORDER BY cn.MaCN ASC;
+      `;
+      const result = await request.query(query);
+      return result.recordset;
+    } catch (err) {
+      // Fallback nếu tài khoản không có quyền truy cập bảng NhanVien (Chính sách Least Privilege)
+      if (err.number === 229 || err.message?.includes('permission was denied')) {
+        const fbQuery = `
+          SELECT cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT,
+                 COUNT(DISTINCT k.MaKho) AS SoKhoHang,
+                 0 AS SoNhanVien
+          FROM ChiNhanh cn
+          LEFT JOIN KhoHang k ON cn.MaCN = k.MaCN
+          GROUP BY cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT
+          ORDER BY cn.MaCN ASC;
+        `;
+        const fbResult = await pool.request().query(fbQuery);
+        return fbResult.recordset;
+      }
+      throw err;
+    }
   }
 
   async createBranch({ tenCN, diaChi, soDT }, userContext) {
@@ -114,16 +132,43 @@ class SqlServerMasterRepository {
   async getEmployees(userContext) {
     const pool = await connectionFactory.getPool(userContext?.user, userContext?.password);
     const request = pool.request();
-    const query = `
-      SELECT nv.MaNV, nv.HoTen, nv.Luong, nv.MaCN, cn.TenCN, nv.MaQL, ql.HoTen AS TenNguoiQuanLy, nv.DaXoa
-      FROM NhanVien nv
-      INNER JOIN ChiNhanh cn ON nv.MaCN = cn.MaCN
-      LEFT JOIN NhanVien ql ON nv.MaQL = ql.MaNV
-      WHERE nv.DaXoa = 0
-      ORDER BY nv.MaCN, nv.MaNV ASC;
-    `;
-    const result = await request.query(query);
-    return result.recordset;
+    try {
+      const query = `
+        SELECT nv.MaNV, nv.HoTen, nv.Luong, nv.MaCN, cn.TenCN, nv.MaQL, ql.HoTen AS TenNguoiQuanLy, nv.DaXoa
+        FROM NhanVien nv
+        INNER JOIN ChiNhanh cn ON nv.MaCN = cn.MaCN
+        LEFT JOIN NhanVien ql ON nv.MaQL = ql.MaNV
+        WHERE nv.DaXoa = 0
+        ORDER BY nv.MaCN, nv.MaNV ASC;
+      `;
+      const result = await request.query(query);
+      return result.recordset;
+    } catch (err) {
+      // Bảo mật cấp cột / cấp bảng: Nếu Role bị cấm truy cập bảng NhanVien hoặc cột Luong (Error 229)
+      // Tự động fallback sang View phân cấp nhân sự được cấp quyền v_PhanCapNhanSu_ToanDien
+      if (err.number === 229 || err.message?.includes('permission was denied')) {
+        try {
+          const fallbackQuery = `
+            SELECT 
+              MaNV,
+              TenNhanVien AS HoTen,
+              CAST(NULL AS DECIMAL(12,2)) AS Luong,
+              MaCN,
+              ChiNhanhLamViec AS TenCN,
+              MaQL,
+              NguoiQuanLyTrucTiep AS TenNguoiQuanLy,
+              0 AS DaXoa
+            FROM v_PhanCapNhanSu_ToanDien
+            ORDER BY MaCN, MaNV ASC;
+          `;
+          const fbResult = await pool.request().query(fallbackQuery);
+          return fbResult.recordset;
+        } catch {
+          return [];
+        }
+      }
+      throw err;
+    }
   }
 
   async createEmployee({ hoTen, luong, maCN, maQL }, userContext) {

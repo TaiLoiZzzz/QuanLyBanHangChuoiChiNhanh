@@ -27,6 +27,11 @@ export default function OrganizationScreen({ currentUser }) {
   const [hierarchy, setHierarchy] = useState([]);
   const [branch1Staff, setBranch1Staff] = useState([]);
 
+  // Fallback danh sách nhân sự từ View nếu bảng thô NhanVien bị ẩn lương
+  const staffList = employees.length > 0 
+    ? employees 
+    : hierarchy.map((h) => ({ MaNV: h.MaNV, HoTen: h.HoTen, TenCN: h.TenCN }));
+
   // Modals
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
   const [branchForm, setBranchForm] = useState({ tenCN: '', diaChi: '', soDT: '' });
@@ -266,7 +271,7 @@ export default function OrganizationScreen({ currentUser }) {
         <div className="stat-card">
           <div className="stat-info">
             <span className="stat-label">Tổng Nhân Sự</span>
-            <span className="stat-value">{employees.length}</span>
+            <span className="stat-value">{employees.length > 0 ? employees.length : hierarchy.length}</span>
             <span className="stat-desc">Nhân viên & cấp quản lý</span>
           </div>
           <div className="stat-icon-wrapper" style={{ backgroundColor: '#F0FDF4', color: '#16A34A' }}>
@@ -301,7 +306,7 @@ export default function OrganizationScreen({ currentUser }) {
             className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`}
             onClick={() => setActiveTab('employees')}
           >
-            <Users size={18} /> Nhân Sự & Cây Phân Cấp ({employees.length})
+            <Users size={18} /> Nhân Sự & Cây Phân Cấp ({employees.length > 0 ? employees.length : hierarchy.length})
           </button>
           <button
             className={`tab-btn ${activeTab === 'customers' ? 'active' : ''}`}
@@ -313,46 +318,58 @@ export default function OrganizationScreen({ currentUser }) {
 
         {/* TAB 1: CHI NHÁNH */}
         {activeTab === 'branches' && (
-          <div className="table-responsive">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th style={{ width: '80px' }}>Mã CN</th>
-                  <th>Tên Chi Nhánh</th>
-                  <th>Địa Chỉ Trụ Sở</th>
-                  <th>Số Điện Thoại</th>
-                  <th style={{ textAlign: 'center' }}>Số Kho Trực Thuộc</th>
-                  <th style={{ textAlign: 'center' }}>Quy Mô Nhân Sự</th>
-                </tr>
-              </thead>
-              <tbody>
-                {branches.map((b) => (
-                  <tr key={b.MaCN}>
-                    <td style={{ fontWeight: 700, color: 'var(--text-muted)' }}>CN{b.MaCN}</td>
-                    <td style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '14px' }}>
-                      {b.TenCN}
-                    </td>
-                    <td style={{ color: 'var(--text-muted)' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <MapPin size={14} /> {b.DiaChi || 'Chưa cập nhật'}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <Phone size={14} color="var(--primary)" /> {b.SoDT}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className="badge badge-primary">{b.SoKhoHang} Kho</span>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className="badge badge-secondary">{b.SoNhanVien} Nhân viên</span>
-                    </td>
+          loading ? (
+            <div className="loading-state" style={{ padding: '60px', textAlign: 'center' }}>
+              <div className="spinner"></div>
+              <p style={{ marginTop: '12px', color: 'var(--text-muted)' }}>Đang tải danh sách chi nhánh...</p>
+            </div>
+          ) : branches.length === 0 ? (
+            <div className="empty-state" style={{ padding: '60px', textAlign: 'center' }}>
+              <Building2 size={48} color="var(--text-muted)" style={{ marginBottom: '12px', opacity: 0.5 }} />
+              <p style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Chưa có chi nhánh nào hoặc chưa có dữ liệu phản hồi.</p>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '80px' }}>Mã CN</th>
+                    <th>Tên Chi Nhánh</th>
+                    <th>Địa Chỉ Trụ Sở</th>
+                    <th>Số Điện Thoại</th>
+                    <th style={{ textAlign: 'center' }}>Số Kho Trực Thuộc</th>
+                    <th style={{ textAlign: 'center' }}>Quy Mô Nhân Sự</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {branches.map((b) => (
+                    <tr key={b.MaCN}>
+                      <td style={{ fontWeight: 700, color: 'var(--text-muted)' }}>CN{b.MaCN}</td>
+                      <td style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '14px' }}>
+                        {b.TenCN}
+                      </td>
+                      <td style={{ color: 'var(--text-muted)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <MapPin size={14} /> {b.DiaChi || 'Chưa cập nhật'}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <Phone size={14} color="var(--primary)" /> {b.SoDT}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="badge badge-primary">{b.SoKhoHang} Kho</span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="badge badge-secondary">{b.SoNhanVien} Nhân viên</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         )}
 
         {/* TAB 2: NHÂN VIÊN */}
@@ -661,7 +678,7 @@ export default function OrganizationScreen({ currentUser }) {
                       onChange={(e) => setEmpForm({ ...empForm, maQL: e.target.value })}
                     >
                       <option value="">-- Không có (Cấp lãnh đạo) --</option>
-                      {employees.map((e) => (
+                      {staffList.map((e) => (
                         <option key={e.MaNV} value={e.MaNV}>{e.HoTen} (NV{e.MaNV})</option>
                       ))}
                     </select>
@@ -767,7 +784,7 @@ export default function OrganizationScreen({ currentUser }) {
                     required
                   >
                     <option value="">-- Chọn nhân viên cần xóa --</option>
-                    {employees.map((e) => (
+                    {staffList.map((e) => (
                       <option key={e.MaNV} value={e.MaNV}>
                         NV{e.MaNV} - {e.HoTen} ({e.TenCN})
                       </option>
@@ -783,7 +800,7 @@ export default function OrganizationScreen({ currentUser }) {
                     required
                   >
                     <option value="">-- Chọn người quản lý mới --</option>
-                    {employees.filter((e) => String(e.MaNV) !== String(reorganizeForm.maNVCantXoa)).map((e) => (
+                    {staffList.filter((e) => String(e.MaNV) !== String(reorganizeForm.maNVCantXoa)).map((e) => (
                       <option key={e.MaNV} value={e.MaNV}>
                         NV{e.MaNV} - {e.HoTen} ({e.TenCN})
                       </option>
