@@ -136,8 +136,8 @@ class SqlServerMasterRepository {
 
     const query = `
       INSERT INTO NhanVien (HoTen, Luong, MaCN, MaQL)
-      OUTPUT INSERTED.MaNV, INSERTED.HoTen, INSERTED.Luong, INSERTED.MaCN, INSERTED.MaQL
       VALUES (@HoTen, @Luong, @MaCN, @MaQL);
+      SELECT SCOPE_IDENTITY() AS MaNV, @HoTen AS HoTen, @Luong AS Luong, @MaCN AS MaCN, @MaQL AS MaQL;
     `;
     const result = await request.query(query);
     return result.recordset[0];

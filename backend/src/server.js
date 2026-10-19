@@ -31,3 +31,12 @@ process.on('SIGINT', async () => {
   await connectionFactory.closeAll();
   server.close(() => process.exit(0));
 });
+
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception]:', err.message);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Unhandled Rejection]:', reason);
+});
+
