@@ -3,7 +3,8 @@
 -- GIẢNG VIÊN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
 -- BƯỚC 8: 5 NGHIỆP VỤ GIAO DỊCH (ACID) & MINH CHỨNG XỬ LÝ TRANH CHẤP ĐỒNG THỜI
--- NGƯỜI PHỤ TRÁCH: QUÁCH TÀI LỢI (70%) - HỖ TRỢ: PHAN THIỆN KHỞI (7.5%)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 
 USE QuanLyBanHangDB;
@@ -16,6 +17,7 @@ GO
 
 -- =========================================================================
 -- GIAO DỊCH 1: ĐẶT HÀNG & GIỮ CHỖ TỒN KHO AN TOÀN (ATOMIC ORDERING)
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
 -- Đảm bảo tính nguyên tử: Tạo đơn hàng + Chi tiết đơn hàng + Trừ kho + Cập nhật tổng tiền
 -- =========================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_Tx_DatHangVaGiuCho
@@ -70,6 +72,7 @@ GO
 
 -- =========================================================================
 -- GIAO DỊCH 2: HỦY ĐƠN HÀNG VÀ HOÀN TRẢ SỐ LƯỢNG TỒN KHO (COMPENSATING TX)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
 -- Nghiệp vụ: Chuyển trạng thái đơn sang 4 (Đã hủy) và hoàn trả lại số lượng cho toàn bộ mặt hàng
 -- =========================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_Tx_HuyDonHangVaHoanTonKho
@@ -131,6 +134,7 @@ GO
 
 -- =========================================================================
 -- GIAO DỊCH 3: SA THẢI QUẢN LÝ VÀ ĐIỀU CHUYỂN TOÀN BỘ CẤP DƯỚI (HR REORGANIZATION)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
 -- Nghiệp vụ: Xóa mềm quản lý (DaXoa = 1) và chuyển các nhân viên dưới quyền lên cho Sếp Tổng
 -- =========================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_Tx_XoaNhanVienVaDieuChuyenQuanLy
@@ -178,6 +182,7 @@ GO
 
 -- =========================================================================
 -- GIAO DỊCH 4: THĂNG HẠNG THÀNH VIÊN VÀ TẶNG ĐIỂM THƯỞNG HÀNG LOẠT (BATCH PROMOTION)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
 -- Nghiệp vụ: Chạy định kỳ thăng hạng khách hàng có điểm tích lũy cao và tặng điểm tri ân
 -- =========================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_Tx_ThangHangThanhVienHangLoat
@@ -226,6 +231,7 @@ GO
 
 -- =========================================================================
 -- GIAO DỊCH 5: ĐIỀU CHUYỂN KHO TỒN HÀNG HÓA LIÊN CHI NHÁNH CÓ BẢO MẬT (INTER-BRANCH TX)
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh
     @MaKhoXuat INT,

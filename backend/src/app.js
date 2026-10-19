@@ -27,7 +27,7 @@ app.get('/health', (req, res) => {
     status: 'ONLINE',
     system: 'Hệ thống Quản lý Bán hàng & Chuỗi Tồn kho Đa Chi nhánh',
     course: 'Hệ quản trị CSDL (DBMS330284) - GV: TS. Phan Thị Thể',
-    teamLead: 'Quách Tài Lợi (70%)',
+    teamMembers: 'Quách Tài Lợi (20%), Phan Thiện Khởi (20%), Huỳnh Văn Bình (20%), Hoàng Gia Kiệt (20%), Trần Nhật Tân (20%)',
     architecture: 'Clean Architecture (OOP) + Raw Driver mssql'
   });
 });

@@ -3,7 +3,8 @@
 -- GIẢNG VIÊN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
 -- BƯỚC 9: BẢO MẬT & PHÂN QUYỀN NATIVE (4 LOGINS, 4 ROLES, GRANT/REVOKE/DENY)
--- NGƯỜI PHỤ TRÁCH: QUÁCH TÀI LỢI (70%) - HỖ TRỢ: PHAN THIỆN KHỞI (7.5%)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 
 USE master;
@@ -65,11 +66,11 @@ GO
 -- 4. THIẾT LẬP QUYỀN HẠN CHI TIẾT (GRANT / REVOKE / DENY)
 -- =========================================================================
 
--- ROLE 1: ADMIN (QUẢN TRỊ VIÊN CAO CẤP) -> TOÀN QUYỀN
+-- ROLE 1: ADMIN (QUẢN TRỊ VIÊN CAO CẤP) -> TOÀN QUYỀN (QUÁCH TÀI LỢI - 20%)
 GRANT CONTROL ON DATABASE::QuanLyBanHangDB TO Role_Admin;
 GO
 
--- ROLE 2: QUẢN LÝ CHI NHÁNH
+-- ROLE 2: QUẢN LÝ CHI NHÁNH (PHAN THIỆN KHỞI - 20%)
 -- Được xem tất cả Views báo cáo, thủ tục chuyển kho, tìm kiếm
 GRANT SELECT ON v_BaoCaoTonKho_XepHang TO Role_QuanLyChiNhanh;
 GRANT SELECT ON v_TongHopDoanhThuSanPham TO Role_QuanLyChiNhanh;
@@ -82,7 +83,7 @@ GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_QuanLyChiNhanh;
 DENY SELECT ON NhanVien TO Role_QuanLyChiNhanh;
 GO
 
--- ROLE 3: THU NGÂN (CASHIER)
+-- ROLE 3: THU NGÂN / CASHIER (HUỲNH VĂN BÌNH - 20%)
 -- Chỉ được tạo đơn, in hóa đơn, tìm khách và tra sản phẩm
 GRANT EXECUTE ON dbo.sp_TaoDonHangVaChiTiet TO Role_ThuNgan;
 GRANT EXECUTE ON dbo.sp_CapNhatTrangThaiDonHang TO Role_ThuNgan;
@@ -97,7 +98,7 @@ DENY DELETE ON ChiTietDonHang TO Role_ThuNgan;
 DENY SELECT ON LichSuGia TO Role_ThuNgan;
 GO
 
--- ROLE 4: THỦ KHO (STOCKKEEPER)
+-- ROLE 4: THỦ KHO / STOCKKEEPER (HOÀNG GIA KIỆT - 20%)
 -- Chỉ được kiểm tra tồn kho, chuyển kho
 GRANT SELECT ON v_BaoCaoTonKho_XepHang TO Role_ThuKho;
 GRANT SELECT ON TonKho TO Role_ThuKho;
@@ -109,6 +110,9 @@ DENY SELECT ON DonHang TO Role_ThuKho;
 DENY SELECT ON ChiTietDonHang TO Role_ThuKho;
 DENY SELECT ON NhanVien TO Role_ThuKho;
 GO
+
+-- MA TRẬN BẢO MẬT & KIỂM THỬ XÁC THỰC RLS (TRẦN NHẬT TÂN - 20%)
+-- Thiết lập chính sách kiểm thử kết nối trực tiếp từ Web Dashboard qua 4 tài khoản CSDL
 
 PRINT N'=========================================================================';
 PRINT N'HOAN THANH PHAN QUYEN NATIVE 4 LOGINS, 4 ROLES THEO CHUAN LEAST PRIVILEGE!';

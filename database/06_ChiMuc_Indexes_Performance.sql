@@ -3,7 +3,8 @@
 -- GIẢNG VIÊN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
 -- BƯỚC 6: XÂY DỰNG 5 CHỈ MỤC (INDEXES) & PHÂN TÍCH HIỆU NĂNG EXECUTION PLAN
--- NGƯỜI PHỤ TRÁCH: QUÁCH TÀI LỢI (70%) - HỖ TRỢ: PHAN THIỆN KHỞI (7.5%)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 
 USE QuanLyBanHangDB;
@@ -33,6 +34,7 @@ GO
 
 -- =========================================================================
 -- CHỈ MỤC 1: NON-CLUSTERED UNIQUE INDEX TRÊN SỐ ĐIỆN THOẠI KHÁCH HÀNG
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
 -- Nghiệp vụ: Thu ngân gõ số điện thoại khách tại quầy để tra cứu tích điểm và hạng thành viên
 -- Kỹ thuật: Unique Non-clustered Index B-Tree, FILLFACTOR = 80 chống Page Split
 -- =========================================================================
@@ -46,6 +48,7 @@ GO
 
 -- =========================================================================
 -- CHỈ MỤC 2: COMPOSITE COVERING INDEX TRÊN ĐƠN HÀNG (NGÀY ĐẶT & TRẠNG THÁI)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
 -- Nghiệp vụ: Báo cáo doanh số theo khoảng thời gian và lọc trạng thái đơn hàng
 -- Kỹ thuật: Composite Index (NgayDat, TrangThai) kèm INCLUDE (TongTien, MaKH, MaNV)
 --           giúp biến câu truy vấn thành Index Seek 100% không cần Key Lookup!
@@ -61,6 +64,7 @@ GO
 
 -- =========================================================================
 -- CHỈ MỤC 3: FILTERED INDEX TRÊN SẢN PHẨM CÒN KINH DOANH (DANH MỤC & GIÁ BÁN)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
 -- Nghiệp vụ: Khách hàng lọc sản phẩm theo nhóm và tầm giá trên Web/App
 -- Kỹ thuật: Filtered Index có điều kiện WHERE DaXoa = 0, giúp tiết kiệm bộ nhớ RAM
 --           và không phải index các sản phẩm đã ngừng kinh doanh (Soft-deleted)
@@ -77,6 +81,7 @@ GO
 
 -- =========================================================================
 -- CHỈ MỤC 4: COMPOSITE INDEX HỖ TRỢ TRUY VẤN VÀ CẢNH BÁO TỒN KHO
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
 -- Nghiệp vụ: Phục vụ trực tiếp cho View 1 (v_BaoCaoTonKho_XepHang) và Trigger kiểm tra tồn kho
 -- Kỹ thuật: Non-clustered Index trên TonKho(MaSP, SoLuongTon)
 -- =========================================================================
@@ -90,6 +95,7 @@ GO
 
 -- =========================================================================
 -- CHỈ MỤC 5: INDEX HỖ TRỢ TÌM KIẾM CÂY NHÂN SỰ VÀ PHÂN QUYỀN THEO CHI NHÁNH
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
 -- Nghiệp vụ: Phục vụ tra cứu danh bạ nội bộ (View 2) và kiểm tra quyền quản lý chi nhánh
 -- Kỹ thuật: Non-clustered Index trên NhanVien(MaCN, MaQL) INCLUDE (HoTen)
 -- =========================================================================

@@ -3,7 +3,8 @@
 -- GIẢNG VIÊN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
 -- BƯỚC 5: XÂY DỰNG 5 TRIGGER CHUYÊN SÂU (CHUẨN MULTI-ROW VÀ TOÀN VẸN DỮ LIỆU)
--- NGƯỜI PHỤ TRÁCH: QUÁCH TÀI LỢI (70%) - HỖ TRỢ: PHAN THIỆN KHỞI (7.5%)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 
 USE QuanLyBanHangDB;
@@ -25,6 +26,7 @@ GO
 
 -- =========================================================================
 -- TRIGGER 1 (INSTEAD OF INSERT): KIỂM TRA TỒN KHO TRƯỚC KHI TẠO CHI TIẾT ĐƠN HÀNG
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
 -- Nghiệp vụ: Chặn đứng tình trạng bán hàng vượt quá tồn kho (Bán khống)
 -- Kỹ thuật Multi-row: Quét toàn bộ bảng ảo inserted gom nhóm theo (Kho, SP),
 -- so sánh với TonKho. SoLuongTon. Thiếu hàng là ROLLBACK ngay lập tức!
@@ -94,6 +96,7 @@ GO
 
 -- =========================================================================
 -- TRIGGER 2 (AFTER UPDATE): AUDIT LOG THAY ĐỔI GIÁ SẢN PHẨM (THEO DÕI LỊCH SỬ GIÁ)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
 -- Nghiệp vụ: Tự động ghi vết vào bảng LichSuGia mỗi khi giá bán thay đổi
 -- Kỹ thuật Multi-row: So sánh bảng ảo inserted và deleted, hỗ trợ cập nhật giá hàng loạt
 -- =========================================================================
@@ -126,6 +129,7 @@ GO
 
 -- =========================================================================
 -- TRIGGER 3 (AFTER UPDATE): TÍCH ĐIỂM THƯỞNG & TỰ ĐỘNG NÂNG HẠNG VIP KHÁCH HÀNG
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
 -- Nghiệp vụ: Khi đơn hàng chuyển trạng thái sang 3 (Giao thành công):
 --            - Cộng điểm tích lũy: Cứ 100.000đ = 1 điểm
 --            - Nếu điểm >= 1000: Tự động nâng hạng lên 1 (VIP)
@@ -170,6 +174,7 @@ GO
 
 -- =========================================================================
 -- TRIGGER 4 (INSTEAD OF DELETE): CẤM XÓA ĐƠN HÀNG ĐÃ GIAO THÀNH CÔNG (CHỐNG GIAN LẬN)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
 -- Nghiệp vụ: Bảo vệ toàn vẹn chứng từ kế toán. Tuyệt đối không cho phép xóa đơn đã giao (TrangThai = 3)
 -- Kỹ thuật Multi-row: Quét toàn bộ bảng deleted, chỉ cần 1 đơn vi phạm là chặn đứng toàn bộ lô xóa
 -- =========================================================================
@@ -206,6 +211,7 @@ GO
 
 -- =========================================================================
 -- TRIGGER 5 (AFTER INSERT, UPDATE): GHI NHẬT KÝ BẢO MẬT HỆ THỐNG KHI THAY ĐỔI NHÂN SỰ
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
 -- Nghiệp vụ: Tự động ghi vết vào NhatKyHeThong khi có nhân viên mới hoặc chỉnh sửa nhân sự
 -- Kỹ thuật Multi-row: Phân biệt thao tác INSERT vs UPDATE bằng tương quan deleted / inserted
 -- =========================================================================

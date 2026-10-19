@@ -3,7 +3,8 @@
 -- GIẢNG VIÊN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
 -- BƯỚC 3: XÂY DỰNG 5 KHUNG NHÌN (VIEWS) CHUYÊN SÂU & TỐI ƯU DATABASE ENGINE
--- NGƯỜI PHỤ TRÁCH: QUÁCH TÀI LỢI (70%) - HỖ TRỢ: PHAN THIỆN KHỞI (7.5%)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 
 USE QuanLyBanHangDB;
@@ -26,6 +27,7 @@ GO
 
 -- =========================================================================
 -- VIEW 1: BÁO CÁO TỒN KHO & XẾP HẠNG NGUY CƠ HẾT HÀNG (WINDOW FUNCTIONS)
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
 -- Kỹ thuật chuyên sâu:
 --   - Dùng DENSE_RANK() OVER (PARTITION BY cn.MaCN ORDER BY tk.SoLuongTon ASC) để xếp hạng sản phẩm cạn kho nhất
 --   - Dùng SUM(...) OVER (PARTITION BY k.MaKho) để tính % tỷ trọng chiếm dụng kho
@@ -71,6 +73,7 @@ GO
 
 -- =========================================================================
 -- VIEW 2: PHÂN CẤP NHÂN SỰ & QUẢN TRỊ ĐỘI NGŨ (SELF-JOIN + AGGREGATION)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
 -- Kỹ thuật chuyên sâu:
 --   - Self LEFT JOIN giải mã cây phân cấp sếp - lính (MaQL -> HoTen)
 --   - Tương quan đếm số lượng nhân viên cấp dưới trực tiếp mà người đó quản lý
@@ -100,6 +103,7 @@ GO
 
 -- =========================================================================
 -- VIEW 3: PHÂN VÙNG QUẢN LÝ NHÂN VIÊN CHI NHÁNH 1 (WITH CHECK OPTION)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
 -- Kỹ thuật chuyên sâu:
 --   - Phân quyền theo hàng (Row-level Security / Partition View) cho Quản lý Chi nhánh 1
 --   - Cho phép UPDATE qua View nhưng ràng buộc WITH CHECK OPTION cấm sửa đổi MaCN sang chi nhánh khác!
@@ -122,6 +126,7 @@ GO
 
 -- =========================================================================
 -- VIEW 4: IN HÓA ĐƠN BÁN HÀNG PHỨC HỢP (COMPOSITE JOIN 5 BẢNG + TÍNH TOÁN)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
 -- Kỹ thuật chuyên sâu:
 --   - Kết nối 5 bảng: DonHang -> KhachHang -> NhanVien -> KhoHang -> ChiTietDonHang -> SanPham
 --   - Tính mức chiết khấu tự động theo phân hạng khách hàng (VIP = 10%, Thường = 0%)
@@ -180,6 +185,7 @@ GO
 
 -- =========================================================================
 -- VIEW 5: TỔNG HỢP DOANH THU SẢN PHẨM (INDEXED VIEW - ĐỈNH CAO DATABASE ENGINE)
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
 -- Kỹ thuật chuyên sâu:
 --   - Bắt buộc dùng WITH SCHEMABINDING (khóa cứng metadata)
 --   - Bắt buộc dùng COUNT_BIG(*) khi có GROUP BY

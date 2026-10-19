@@ -3,7 +3,8 @@
 -- GIẢNG VIÊN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
 -- BƯỚC 7: XÂY DỰNG 5 THỦ TỤC LƯU TRỮ (STORED PROCEDURES) CÓ TRY...CATCH
--- NGƯỜI PHỤ TRÁCH: QUÁCH TÀI LỢI (70%) - HỖ TRỢ: PHAN THIỆN KHỞI (7.5%)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 
 USE QuanLyBanHangDB;
@@ -24,6 +25,7 @@ GO
 
 -- =========================================================================
 -- THỦ TỤC 1: TẠO ĐƠN HÀNG VÀ CHI TIẾT ĐƠN HÀNG NGUYÊN TỬ (INSERT)
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
 -- Nghiệp vụ: Thu ngân tạo đơn hàng mới kèm sản phẩm đầu tiên trong 1 giao dịch
 -- Kỹ thuật: TRY...CATCH, XACT_STATE(), OUTPUT parameter, Transaction an toàn
 -- =========================================================================
@@ -82,6 +84,7 @@ GO
 
 -- =========================================================================
 -- THỦ TỤC 2: CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG CÓ KIỂM SOÁT VÒNG ĐỜI (UPDATE)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
 -- Nghiệp vụ: Chuyển trạng thái đơn (0: Mới -> 1: Xác nhận -> 2: Đang giao -> 3: Giao thành công / 4: Hủy)
 -- Kỹ thuật: Kiểm tra luật chuyển đổi trạng thái hợp lệ, TRY...CATCH
 -- =========================================================================
@@ -125,6 +128,7 @@ GO
 
 -- =========================================================================
 -- THỦ TỤC 3: ĐIỀU CHUYỂN HÀNG HÓA NỘI BỘ GIỮA 2 KHO (TRANSACTION NGUYÊN TỬ)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
 -- Nghiệp vụ: Chuyển N sản phẩm từ Kho A sang Kho B của chuỗi
 -- Kỹ thuật: UPDLOCK trên kho xuất để chống Race Condition, Transaction kiểm soát ACID
 -- =========================================================================
@@ -204,6 +208,7 @@ GO
 
 -- =========================================================================
 -- THỦ TỤC 4: TÌM KIẾM SẢN PHẨM NÂNG CAO ĐA TIÊU CHÍ (SEARCH)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
 -- Nghiệp vụ: Tìm sản phẩm theo từ khóa tên, theo danh mục, hoặc theo khoảng giá
 -- Kỹ thuật: Xử lý tham số linh hoạt (Dynamic filtering với COALESCE / IS NULL)
 -- =========================================================================
@@ -248,6 +253,7 @@ GO
 
 -- =========================================================================
 -- THỦ TỤC 5: BÁO CÁO TỔNG HỢP DOANH THU & SẢN LƯỢNG CHI NHÁNH (REPORT / STATS)
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
 -- Nghiệp vụ: Ban Giám Đốc xem doanh thu, số đơn và sản lượng bán theo chi nhánh
 -- Kỹ thuật: Phân tích nhóm ROLLUP / Aggregation, TRY...CATCH
 -- =========================================================================
