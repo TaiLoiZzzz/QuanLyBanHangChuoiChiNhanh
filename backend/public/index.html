@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DBMS330284 - Hệ Thống Bán Hàng & Chuỗi Tồn Kho</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 600; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="bg-blue-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+      <div>
+        <h1 class="text-xl font-bold tracking-tight">HỆ THỐNG QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH</h1>
+        <p class="text-xs text-blue-200">Học phần: DBMS330284 - TS. Phan Thị Thể | Nhóm sinh viên: Lợi (20%), Khởi (20%), Bình (20%), Kiệt (20%), Tân (20%)</p>
+      </div>
+
+      <!-- User Role Selector -->
+      <div class="flex items-center gap-2 bg-blue-950 px-3 py-1.5 rounded-lg border border-blue-700 text-sm">
+        <span class="text-blue-300 font-medium">Tài khoản CSDL:</span>
+        <select id="roleSelector" onchange="switchDbRole()" class="bg-blue-900 text-white rounded px-2 py-1 text-xs border border-blue-600 focus:outline-none">
+          <option value="sa|PasswordAdmin@2026">sa (System Administrator)</option>
+          <option value="Login_Admin|AdminPassword@2026">Login_Admin (Role_Admin)</option>
+          <option value="Login_QuanLyChiNhanh|ManagerPassword@2026">Login_QuanLyChiNhanh (Role_QuanLyChiNhanh)</option>
+          <option value="Login_ThuNgan|CashierPassword@2026">Login_ThuNgan (Role_ThuNgan)</option>
+          <option value="Login_ThuKho|StockPassword@2026">Login_ThuKho (Role_ThuKho)</option>
+        </select>
+        <span id="roleBadge" class="bg-green-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">sysadmin</span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-7xl mx-auto px-4 flex gap-6 text-sm overflow-x-auto border-t border-blue-800">
+      <button onclick="showTab('pos')" id="tab-pos" class="py-3 px-2 tab-active text-white">1. POS & Hóa Đơn (SP1, SP2, View 4, UDF 1,2,5, Tx 1,2)</button>
+      <button onclick="showTab('inventory')" id="tab-inventory" class="py-3 px-2 text-blue-200 hover:text-white">2. Báo Cáo Tồn Kho & Tìm Kiếm (View 1, SP 4)</button>
+      <button onclick="showTab('transfer')" id="tab-transfer" class="py-3 px-2 text-blue-200 hover:text-white">3. Điều Chuyển Kho (SP 3, Tx 5)</button>
+      <button onclick="showTab('reports')" id="tab-reports" class="py-3 px-2 text-blue-200 hover:text-white">4. Doanh Thu & KPI & Indexed View (UDF 4, SP 5, View 5)</button>
+      <button onclick="showTab('hr')" id="tab-hr" class="py-3 px-2 text-blue-200 hover:text-white">5. Quản Trị Nhân Sự & Khách Hàng (View 2, View 3, Tx 3, Tx 4)</button>
+    </div>
+  </header>
+
+  <!-- Notification Banner -->
+  <div id="alertBanner" class="hidden max-w-7xl mx-auto px-4 mt-4 w-full">
+    <div id="alertContent" class="p-3 rounded-lg text-sm border flex justify-between items-center">
+      <span id="alertMessage"></span>
+      <button onclick="document.getElementById('alertBanner').classList.add('hidden')" class="font-bold ml-4">✕</button>
+    </div>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full">
+
+    <!-- ========================================================================= -->
+    <!-- TAB 1: POS & INVOICE -->
+    <!-- ========================================================================= -->
+    <section id="pane-pos" class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Form Tạo Đơn Hàng (Calls sp_TaoDonHangVaChiTiet or usp_Tx_DatHangVaGiuCho) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <h2 class="font-bold text-base text-slate-800 border-b pb-2 flex items-center justify-between">
+            <span>Tạo Đơn Hàng Mới</span>
+            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono">SP 1 & Tx 1</span>
+          </h2>
+          <form id="orderForm" onsubmit="createOrder(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Khách Hàng:</label>
+              <select id="ordMaKH" onchange="previewDiscount()" class="w-full border rounded px-2.5 py-1.5 focus:ring-1 focus:ring-blue-500">
+                <option value="1">1 - Phạm Hoàng Khách (Khách Thường - 0%)</option>
+                <option value="2">2 - Vũ Thị VIP (Khách VIP - Giảm 10%)</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Nhân Viên Bán:</label>
+                <select id="ordMaNV" class="w-full border rounded px-2.5 py-1.5">
+                  <option value="2">NV 2 - Trần Thị Thu Ngân</option>
+                  <option value="3">NV 3 - Lê Văn Thủ Kho</option>
+                  <option value="1">NV 1 - Nguyễn Văn Quản Lý</option>
+                </select>
+              </div>
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Kho Xuất Hàng:</label>
+                <select id="ordMaKho" class="w-full border rounded px-2.5 py-1.5">
+                  <option value="1">Kho 1 - Trung Tâm Q.1</option>
+                  <option value="2">Kho 2 - Chi Nhánh Thủ Đức</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Sản Phẩm Đặt Mua:</label>
+              <select id="ordMaSP" onchange="onProductSelect(this)" class="w-full border rounded px-2.5 py-1.5">
+                <option value="1" data-price="150000">SP 1 - Áo Thun Cotton Basic (150.000 đ)</option>
+                <option value="2" data-price="350000">SP 2 - Áo Sơ Mi Oxford (350.000 đ)</option>
+                <option value="3" data-price="450000">SP 3 - Quần Jean Slimfit (450.000 đ)</option>
+                <option value="4" data-price="250000">SP 4 - Ví Da Nam Cầm Tay (250.000 đ)</option>
+              </select>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Số Lượng:</label>
+                <input type="number" id="ordSoLuong" oninput="previewDiscount()" value="2" min="1" class="w-full border rounded px-2.5 py-1.5" required>
+              </div>
+              <div>
+                <label class="block font-medium text-slate-600 mb-1">Đơn Giá (VNĐ):</label>
+                <input type="number" id="ordDonGia" value="150000" class="w-full border rounded px-2.5 py-1.5" required>
+              </div>
+            </div>
+
+            <!-- Preview Discount via UDF 1 -->
+            <div class="bg-blue-50 border border-blue-200 rounded p-2 text-[11px] text-blue-900 flex justify-between items-center">
+              <span>Giá sau chiết khấu (fn_TinhTienSauChietKhauVIP):</span>
+              <span id="previewPrice" class="font-bold text-sm">300.000 đ</span>
+            </div>
+
+            <div class="flex gap-2 pt-1">
+              <button type="button" onclick="checkStockBeforeOrder()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2 rounded transition border">
+                Kiểm Tồn Kho (UDF 2)
+              </button>
+              <button type="submit" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition">
+                Tạo Đơn (SP 1)
+              </button>
+            </div>
+
+            <button type="button" onclick="createOrderAtomic(event)" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded transition">
+              Đặt Hàng Giữ Chỗ ACID (Tx 1 - UPDLOCK + HOLDLOCK)
+            </button>
+          </form>
+        </div>
+
+        <!-- Chi Tiết Hóa Đơn (Calls View v_InHoaDon_ChiTietPhucHop) -->
+        <div class="md:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Hóa Đơn Bán Hàng Chi Tiết</h2>
+              <p class="text-xs text-slate-500">Khung nhìn: <code class="text-blue-700 font-mono">v_InHoaDon_ChiTietPhucHop</code> + Hàm: <code class="text-blue-700 font-mono">fn_FormatMaHoaDonTuDong</code></p>
+            </div>
+            <div class="flex gap-2 items-center">
+              <input type="number" id="searchMaDH" value="1" placeholder="Mã ĐH" class="w-16 border rounded px-2 py-1 text-xs">
+              <button onclick="loadInvoice(document.getElementById('searchMaDH').value)" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-2.5 py-1 rounded">
+                Xem Hóa Đơn
+              </button>
+              <button onclick="cancelAndRefundOrder(document.getElementById('searchMaDH').value)" class="bg-red-600 hover:bg-red-700 text-white text-xs px-2.5 py-1 rounded">
+                Hủy & Hoàn Kho (Tx 2)
+              </button>
+            </div>
+          </div>
+
+          <!-- Invoice Render Box -->
+          <div id="invoiceBox" class="border border-slate-200 rounded-lg p-5 bg-slate-50 space-y-4">
+            <div class="text-center text-slate-400 py-8 text-xs">
+              Đang tải dữ liệu hóa đơn...
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 2: INVENTORY & SEARCH -->
+    <!-- ========================================================================= -->
+    <section id="pane-inventory" class="hidden space-y-6">
+      <!-- Search Product Form (Calls sp_TimKiemSanPhamNangCao) -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-3 items-end text-xs">
+        <div class="flex-1 min-w-[200px]">
+          <label class="block font-medium text-slate-600 mb-1">Từ khóa tìm kiếm (SP 4):</label>
+          <input type="text" id="searchKeyword" placeholder="Nhập tên áo, quần, ví..." class="w-full border rounded px-2.5 py-1.5">
+        </div>
+        <div>
+          <label class="block font-medium text-slate-600 mb-1">Danh Mục:</label>
+          <select id="searchCategory" class="border rounded px-2.5 py-1.5">
+            <option value="">Tất cả danh mục</option>
+            <option value="1">1 - Áo Nam</option>
+            <option value="2">2 - Quần Nam</option>
+            <option value="3">3 - Phụ Kiện</option>
+          </select>
+        </div>
+        <button onclick="searchProducts()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded font-medium">
+          Tìm Kiếm Đa Tiêu Chí (SP 4)
+        </button>
+      </div>
+
+      <div id="searchResultBox" class="hidden bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-xs space-y-2">
+        <h3 class="font-bold text-slate-800">Kết quả tìm kiếm sản phẩm:</h3>
+        <div id="searchResults" class="overflow-x-auto"></div>
+      </div>
+
+      <!-- Ranked Stock Report (Calls v_BaoCaoTonKho_XepHang) -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex justify-between items-center border-b pb-2">
+          <div>
+            <h2 class="font-bold text-base text-slate-800">Báo Cáo Tồn Kho & Xếp Hạng Độ Khan Hiếm</h2>
+            <p class="text-xs text-slate-500">Khung nhìn: <code class="text-blue-700 font-mono">v_BaoCaoTonKho_XepHang</code> (DENSE_RANK() OVER chi nhánh & % Tỷ trọng kho)</p>
+          </div>
+          <button onclick="loadInventoryReport()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded font-medium">
+            Làm Mới Số Liệu (View 1)
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600 border-b">
+                <th class="p-2.5">Chi Nhánh</th>
+                <th class="p-2.5">Kho Hàng</th>
+                <th class="p-2.5">Mã SP</th>
+                <th class="p-2.5">Tên Sản Phẩm</th>
+                <th class="p-2.5 text-right">Số Lượng Tồn</th>
+                <th class="p-2.5 text-right">Tỷ Trọng Kho</th>
+                <th class="p-2.5 text-center">Xếp Hạng Khan Hiếm</th>
+                <th class="p-2.5 text-center">Trạng Thái Tồn</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryTableBody" class="divide-y divide-slate-100">
+              <tr><td colspan="8" class="p-4 text-center text-slate-400">Đang tải dữ liệu báo cáo...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 3: TRANSFER -->
+    <!-- ========================================================================= -->
+    <section id="pane-transfer" class="hidden space-y-6">
+      <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div class="border-b pb-2">
+          <h2 class="font-bold text-lg text-slate-800">Điều Chuyển Hàng Hóa Giữa Các Kho</h2>
+          <p class="text-xs text-slate-500">Thủ tục: <code class="text-blue-700 font-mono">sp_ChuyenKhoNoiBo</code> (UPDLOCK) & Giao dịch: <code class="text-blue-700 font-mono">usp_Tx_ChuyenKhoHangHoaLienChiNhanh</code></p>
+        </div>
+
+        <form id="transferForm" onsubmit="transferStock(event)" class="space-y-4 text-xs">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Kho Xuất Hàng (Nguồn):</label>
+              <select id="tfKhoXuat" class="w-full border rounded px-3 py-2">
+                <option value="1">Kho 1 - Trung Tâm Quận 1</option>
+                <option value="2">Kho 2 - Chi Nhánh Thủ Đức</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Kho Nhận Hàng (Đích):</label>
+              <select id="tfKhoNhap" class="w-full border rounded px-3 py-2">
+                <option value="2">Kho 2 - Chi Nhánh Thủ Đức</option>
+                <option value="1">Kho 1 - Trung Tâm Quận 1</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-medium text-slate-600 mb-1">Sản Phẩm Điều Chuyển:</label>
+            <select id="tfMaSP" class="w-full border rounded px-3 py-2">
+              <option value="1">SP 1 - Áo Thun Cotton Basic</option>
+              <option value="2">SP 2 - Áo Sơ Mi Oxford</option>
+              <option value="3">SP 3 - Quần Jean Slimfit</option>
+              <option value="4">SP 4 - Ví Da Nam Cầm Tay</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Số Lượng Chuyển:</label>
+              <input type="number" id="tfSoLuong" value="5" min="1" class="w-full border rounded px-3 py-2" required>
+            </div>
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Mã NV Thực Hiện:</label>
+              <input type="number" id="tfMaNV" value="3" class="w-full border rounded px-3 py-2" required>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 pt-2">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded transition">
+              Chuyển Nội Bộ (SP 3)
+            </button>
+            <button type="button" onclick="transferInterBranchTx(event)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded transition">
+              Chuyển Liên Chi Nhánh ACID (Tx 5)
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-400 italic">Thao tác này sẽ bị chặn nếu đang đăng nhập bằng quyền Thu Ngân (Least Privilege).</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 4: REPORTS & INDEXED VIEW -->
+    <!-- ========================================================================= -->
+    <section id="pane-reports" class="hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Báo Cáo KPI Nhân Viên (Calls fn_BaoCaoDoanhThuNhanVienChiTiet) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Hiệu Suất & KPI Nhân Viên</h2>
+              <p class="text-xs text-slate-500">Hàm mTVF: <code class="text-blue-700 font-mono">fn_BaoCaoDoanhThuNhanVienChiTiet(@Nam)</code></p>
+            </div>
+            <button onclick="loadKpiReport()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1 rounded">
+              Lấy Số Liệu 2026 (UDF 4)
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="bg-slate-100 text-slate-600">
+                  <th class="p-2">Mã NV</th>
+                  <th class="p-2">Họ Tên</th>
+                  <th class="p-2">Chi Nhánh</th>
+                  <th class="p-2 text-center">Đơn Chốt</th>
+                  <th class="p-2 text-right">Doanh Số</th>
+                  <th class="p-2 text-center">Đánh Giá</th>
+                </tr>
+              </thead>
+              <tbody id="kpiTableBody" class="divide-y divide-slate-100">
+                <tr><td colspan="6" class="p-4 text-center text-slate-400">Bấm "Lấy Số Liệu" để xem báo cáo KPI.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Báo Cáo Doanh Thu Chi Nhánh (Calls sp_BaoCaoTongHopDoanhThuChiNhanh) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Tổng Hợp Doanh Thu Chi Nhánh</h2>
+              <p class="text-xs text-slate-500">Thủ tục: <code class="text-blue-700 font-mono">sp_BaoCaoTongHopDoanhThuChiNhanh</code></p>
+            </div>
+            <button onclick="loadBranchRevenue()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-2.5 py-1 rounded">
+              Tổng Hợp (SP 5)
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="bg-slate-100 text-slate-600">
+                  <th class="p-2">Chi Nhánh</th>
+                  <th class="p-2 text-center">Số Đơn</th>
+                  <th class="p-2 text-right">Sản Phẩm Đã Bán</th>
+                  <th class="p-2 text-right">Doanh Thu Gốc</th>
+                  <th class="p-2 text-right">Tổng Thu Thực Tế (+VAT)</th>
+                </tr>
+              </thead>
+              <tbody id="branchRevenueBody" class="divide-y divide-slate-100">
+                <tr><td colspan="5" class="p-4 text-center text-slate-400">Bấm "Tổng Hợp" để xem dữ liệu.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Indexed View Sales Summary (Calls v_TongHopDoanhThuSanPham WITH (NOEXPAND)) -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex justify-between items-center border-b pb-2">
+          <div>
+            <h2 class="font-bold text-base text-slate-800">Doanh Số Mặt Hàng Từ Clustered Indexed View (View 5)</h2>
+            <p class="text-xs text-slate-500">Truy vấn vật lý trực tiếp từ đĩa: <code class="text-blue-700 font-mono">v_TongHopDoanhThuSanPham WITH (NOEXPAND)</code></p>
+          </div>
+          <button onclick="loadIndexedSales()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded font-medium">
+            Tải Dữ Liệu Indexed View (View 5)
+          </button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600">
+                <th class="p-2">Mã SP</th>
+                <th class="p-2">Tên Sản Phẩm</th>
+                <th class="p-2 text-center">Số Lần Xuất Hiện</th>
+                <th class="p-2 text-right">Tổng Lượng Bán Ra</th>
+                <th class="p-2 text-right">Tổng Doanh Thu Thu Về</th>
+              </tr>
+            </thead>
+            <tbody id="indexedSalesBody" class="divide-y divide-slate-100">
+              <tr><td colspan="5" class="p-4 text-center text-slate-400">Bấm "Tải Dữ Liệu Indexed View" để đọc từ Clustered Index vật lý.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 5: HR & ADMIN TRANSACTIONS -->
+    <!-- ========================================================================= -->
+    <section id="pane-hr" class="hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Cây Phân Cấp Nhân Sự (Calls v_PhanCapNhanSu_ToanDien - View 2) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Cây Phân Cấp Nhân Sự Toàn Diện (View 2)</h2>
+              <p class="text-xs text-slate-500">Khung nhìn Self-Join: <code class="text-blue-700 font-mono">v_PhanCapNhanSu_ToanDien</code></p>
+            </div>
+            <button onclick="loadStaffHierarchy()" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2.5 py-1 rounded">
+              Xem Cây Nhân Sự
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="bg-slate-100 text-slate-600">
+                  <th class="p-2">Mã NV</th>
+                  <th class="p-2">Họ Tên</th>
+                  <th class="p-2">Chi Nhánh</th>
+                  <th class="p-2">Cấp Trên Trực Tiếp</th>
+                  <th class="p-2 text-center">Cấp Dưới</th>
+                </tr>
+              </thead>
+              <tbody id="hierarchyTableBody" class="divide-y divide-slate-100">
+                <tr><td colspan="5" class="p-4 text-center text-slate-400">Bấm "Xem Cây Nhân Sự" để kết xuất dữ liệu.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Quản Lý Nhân Viên Chi Nhánh 1 (Calls v_NhanVien_ChiNhanh1_KiemSoat - View 3) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h2 class="font-bold text-base text-slate-800">Nhân Sự Chi Nhánh 1 (View 3)</h2>
+              <p class="text-xs text-slate-500">Khung nhìn kiểm soát: <code class="text-blue-700 font-mono">v_NhanVien_ChiNhanh1_KiemSoat WITH CHECK OPTION</code></p>
+            </div>
+            <button onclick="loadBranch1Staff()" class="bg-slate-800 hover:bg-slate-900 text-white text-xs px-2.5 py-1 rounded">
+              Lọc Chi Nhánh 1
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="bg-slate-100 text-slate-600">
+                  <th class="p-2">Mã NV</th>
+                  <th class="p-2">Họ Tên</th>
+                  <th class="p-2 text-center">Mã CN</th>
+                  <th class="p-2 text-center">Mã QL</th>
+                </tr>
+              </thead>
+              <tbody id="branch1StaffBody" class="divide-y divide-slate-100">
+                <tr><td colspan="4" class="p-4 text-center text-slate-400">Bấm "Lọc Chi Nhánh 1" để tải danh sách.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Action Box for ACID Transactions: Batch Promote & Staff Reorganize -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Giao dịch 4: Thăng hạng thành viên hàng loạt (usp_Tx_ThangHangThanhVienHangLoat) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3 text-xs">
+          <h3 class="font-bold text-sm text-slate-800 border-b pb-2 flex items-center justify-between">
+            <span>Thăng Hạng Thành Viên Hàng Loạt</span>
+            <span class="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono">ACID Tx 4</span>
+          </h3>
+          <p class="text-slate-500">Tự động nâng hạng Khách VIP lên Kim Cương và tặng điểm tri ân qua thủ tục giao dịch nguyên tử.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Điểm Tối Thiểu:</label>
+              <input type="number" id="bpDiemMin" value="1000" class="w-full border rounded px-2.5 py-1.5">
+            </div>
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Điểm Thưởng Bonus:</label>
+              <input type="number" id="bpBonus" value="200" class="w-full border rounded px-2.5 py-1.5">
+            </div>
+          </div>
+          <button onclick="runBatchPromote()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded transition mt-2">
+            Thực Thi Thăng Hạng Hàng Loạt (Tx 4)
+          </button>
+        </div>
+
+        <!-- Giao dịch 3: Điều chuyển nhân sự & Xóa mềm quản lý (usp_Tx_XoaNhanVienVaDieuChuyenQuanLy) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3 text-xs">
+          <h3 class="font-bold text-sm text-slate-800 border-b pb-2 flex items-center justify-between">
+            <span>Tái Cấu Trúc Nhân Sự & Xóa Mềm</span>
+            <span class="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded font-mono">ACID Tx 3</span>
+          </h3>
+          <p class="text-slate-500">Chuyển toàn bộ cấp dưới sang sếp mới và đánh dấu xóa mềm quản lý cũ trong 1 giao dịch bảo toàn toàn vẹn.</p>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Mã NV Cần Xóa Mềm:</label>
+              <input type="number" id="roMaNV" value="1" class="w-full border rounded px-2.5 py-1.5">
+            </div>
+            <div>
+              <label class="block font-medium text-slate-600 mb-1">Mã QL Tiếp Nhận Mới:</label>
+              <input type="number" id="roMaQL" value="2" class="w-full border rounded px-2.5 py-1.5">
+            </div>
+          </div>
+          <button onclick="runStaffReorganize()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 rounded transition mt-2">
+            Thực Thi Điều Chuyển Nhân Sự (Tx 3)
+          </button>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 text-center py-3 text-xs text-slate-500">
+    Đồ án cuối kỳ môn Hệ quản trị CSDL (DBMS330284) - TS. Phan Thị Thể | FIT - HCMUTE | Nhóm Lợi, Khởi, Bình, Kiệt, Tân (20% mỗi thành viên)
+  </footer>
+
+  <!-- Frontend Logic Script -->
+  <script>
+    let currentDbUser = 'sa';
+    let currentDbPassword = 'PasswordAdmin@2026';
+
+    function switchDbRole() {
+      const val = document.getElementById('roleSelector').value;
+      const [u, p] = val.split('|');
+      currentDbUser = u;
+      currentDbPassword = p;
+
+      const badge = document.getElementById('roleBadge');
+      if (u === 'sa') badge.innerText = 'sysadmin';
+      else if (u === 'Login_Admin') badge.innerText = 'Role_Admin';
+      else if (u === 'Login_QuanLyChiNhanh') badge.innerText = 'Role_QuanLy';
+      else if (u === 'Login_ThuNgan') badge.innerText = 'Role_ThuNgan';
+      else if (u === 'Login_ThuKho') badge.innerText = 'Role_ThuKho';
+
+      showAlert(`Đã chuyển phiên làm việc sang tài khoản CSDL: [${u}]`, 'info');
+    }
+
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'X-DB-User': currentDbUser,
+        'X-DB-Password': currentDbPassword
+      };
+    }
+
+    function showAlert(msg, type = 'success') {
+      const banner = document.getElementById('alertBanner');
+      const content = document.getElementById('alertContent');
+      const msgEl = document.getElementById('alertMessage');
+
+      msgEl.innerText = msg;
+      banner.classList.remove('hidden');
+
+      if (type === 'error') {
+        content.className = 'p-3 rounded-lg text-sm border bg-red-50 text-red-800 border-red-200 flex justify-between items-center';
+      } else if (type === 'info') {
+        content.className = 'p-3 rounded-lg text-sm border bg-blue-50 text-blue-800 border-blue-200 flex justify-between items-center';
+      } else {
+        content.className = 'p-3 rounded-lg text-sm border bg-emerald-50 text-emerald-800 border-emerald-200 flex justify-between items-center';
+      }
+    }
+
+    function showTab(tabId) {
+      ['pos', 'inventory', 'transfer', 'reports', 'hr'].forEach(id => {
+        const pane = document.getElementById(`pane-${id}`);
+        const tab = document.getElementById(`tab-${id}`);
+        if (pane) pane.classList.add('hidden');
+        if (tab) tab.className = 'py-3 px-2 text-blue-200 hover:text-white';
+      });
+      document.getElementById(`pane-${tabId}`).classList.remove('hidden');
+      document.getElementById(`tab-${tabId}`).className = 'py-3 px-2 tab-active text-white';
+
+      if (tabId === 'inventory') loadInventoryReport();
+      if (tabId === 'reports') { loadKpiReport(); loadBranchRevenue(); loadIndexedSales(); }
+      if (tabId === 'hr') { loadStaffHierarchy(); loadBranch1Staff(); }
+    }
+
+    function onProductSelect(el) {
+      const opt = el.options[el.selectedIndex];
+      document.getElementById('ordDonGia').value = opt.getAttribute('data-price');
+      previewDiscount();
+    }
+
+    async function previewDiscount() {
+      const maKH = document.getElementById('ordMaKH').value;
+      const soLuong = Number(document.getElementById('ordSoLuong').value) || 1;
+      const donGia = Number(document.getElementById('ordDonGia').value) || 0;
+      const tongTienGoc = soLuong * donGia;
+
+      try {
+        const res = await fetch(`/api/orders/vip-discount?maKH=${maKH}&tongTienGoc=${tongTienGoc}`, { headers: getHeaders() });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('previewPrice').innerText = Number(data.tienSauGiam).toLocaleString('vi-VN') + ' đ';
+        }
+      } catch (e) {}
+    }
+
+    async function checkStockBeforeOrder() {
+      const maKho = document.getElementById('ordMaKho').value;
+      const maSP = document.getElementById('ordMaSP').value;
+      const soLuong = document.getElementById('ordSoLuong').value;
+
+      try {
+        const res = await fetch(`/api/orders/check-stock?maKho=${maKho}&maSP=${maSP}&soLuong=${soLuong}`, { headers: getHeaders() });
+        const data = await res.json();
+        if (data.duHangDapUng) {
+          showAlert(`Hàm UDF 2 (fn_KiemTraKhaNangDapUngDonHang): ĐỦ HÀNG trong kho ${maKho} để đáp ứng ${soLuong} món!`, 'success');
+        } else {
+          showAlert(`Hàm UDF 2: CẢNH BÁO THIẾU HÀNG trong kho ${maKho} cho số lượng yêu cầu!`, 'error');
+        }
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function createOrder(e) {
+      e.preventDefault();
+      const payload = {
+        maKH: Number(document.getElementById('ordMaKH').value),
+        maNV: Number(document.getElementById('ordMaNV').value),
+        maKhoXuat: Number(document.getElementById('ordMaKho').value),
+        maSP: Number(document.getElementById('ordMaSP').value),
+        soLuong: Number(document.getElementById('ordSoLuong').value),
+        donGiaBan: Number(document.getElementById('ordDonGia').value)
+      };
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Thủ tục SP 1 thành công: Tạo đơn hàng #${data.maDH} và trừ tồn kho hoàn tất!`, 'success');
+        loadInvoice(data.maDH);
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function createOrderAtomic(e) {
+      e.preventDefault();
+      const payload = {
+        maKH: Number(document.getElementById('ordMaKH').value),
+        maNV: Number(document.getElementById('ordMaNV').value),
+        maKhoXuat: Number(document.getElementById('ordMaKho').value),
+        maSP: Number(document.getElementById('ordMaSP').value),
+        soLuong: Number(document.getElementById('ordSoLuong').value),
+        donGiaBan: Number(document.getElementById('ordDonGia').value)
+      };
+
+      try {
+        const res = await fetch('/api/orders/atomic-reserve', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Giao dịch ACID Tx 1 thành công: Giữ chỗ kho (UPDLOCK + HOLDLOCK) cho đơn #${data.MaDH}!`, 'success');
+        loadInvoice(data.MaDH);
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function cancelAndRefundOrder(maDH) {
+      if (!confirm(`Bạn có chắc chắn muốn hủy đơn hàng #${maDH} và hoàn trả lại số lượng tồn kho?`)) return;
+
+      try {
+        const res = await fetch(`/api/orders/${maDH}/cancel-refund`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ lyDoHuy: 'Khách yêu cầu hủy qua Web POS' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Giao dịch ACID Tx 2 thành công: Đã hủy đơn #${maDH} và hoàn trả số lượng về kho!`, 'success');
+        loadInvoice(maDH);
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadInvoice(id) {
+      try {
+        const res = await fetch(`/api/orders/${id}/invoice`, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const box = document.getElementById('invoiceBox');
+        if (!data.items || data.items.length === 0) {
+          box.innerHTML = `<div class="text-center text-slate-400 py-6 text-xs">Không tìm thấy thông tin đơn hàng #${id}.</div>`;
+          return;
+        }
+
+        const head = data.items[0];
+        let totalAll = data.items.reduce((sum, item) => sum + Number(item.TongThanhToanCuoiCung), 0);
+
+        box.innerHTML = `
+          <div class="border-b pb-3 flex justify-between items-start text-xs">
+            <div>
+              <span class="font-mono bg-blue-100 text-blue-900 font-bold px-2 py-0.5 rounded">${head.MaHoaDonFormat || ('HD-00000' + head.MaDH)}</span>
+              <p class="font-bold text-sm text-slate-900 mt-1">Khách: ${head.TenKhachHang} (${head.SoDTKhachHang})</p>
+              <p class="text-slate-500">Hạng: <span class="text-emerald-700 font-semibold">${head.HangThanhVien}</span></p>
+            </div>
+            <div class="text-right">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${head.TenTrangThai === 'Đã hủy' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}">${head.TenTrangThai}</span>
+              <p class="text-slate-400 text-[11px] mt-1">${new Date(head.NgayDat).toLocaleString('vi-VN')}</p>
+              <p class="text-slate-500 text-[11px]">Kho: ${head.KhoXuatHang} | NV: ${head.NhanVienLapDon}</p>
+            </div>
+          </div>
+
+          <table class="w-full text-xs text-left">
+            <thead>
+              <tr class="border-b text-slate-500 font-medium">
+                <th class="py-1">Mặt Hàng</th>
+                <th class="py-1 text-center">SL</th>
+                <th class="py-1 text-right">Đơn Giá</th>
+                <th class="py-1 text-right">Giảm VIP</th>
+                <th class="py-1 text-right">VAT 8%</th>
+                <th class="py-1 text-right">Thành Tiền</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${data.items.map(item => `
+                <tr>
+                  <td class="py-1.5 font-medium text-slate-800">${item.TenSP}</td>
+                  <td class="py-1.5 text-center">${item.SoLuong} ${item.DonViTinh}</td>
+                  <td class="py-1.5 text-right">${Number(item.DonGiaBan).toLocaleString('vi-VN')} đ</td>
+                  <td class="py-1.5 text-right text-emerald-600 font-medium">-${Number(item.TienChietKhau).toLocaleString('vi-VN')} đ</td>
+                  <td class="py-1.5 text-right text-slate-400">+${Number(item.ThueVAT8Pct).toLocaleString('vi-VN')} đ</td>
+                  <td class="py-1.5 text-right font-bold text-blue-900">${Number(item.TongThanhToanCuoiCung).toLocaleString('vi-VN')} đ</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="border-t pt-2 flex justify-between items-center text-sm font-bold text-slate-900">
+            <span>TỔNG THANH TOÁN (ĐÃ GỒM VAT):</span>
+            <span class="text-base text-emerald-700">${Number(totalAll).toLocaleString('vi-VN')} đ</span>
+          </div>
+        `;
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadInventoryReport() {
+      try {
+        const res = await fetch('/api/inventory/ranked-report', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('inventoryTableBody');
+        tbody.innerHTML = data.report.map(r => {
+          let badgeColor = 'bg-emerald-100 text-emerald-800';
+          if (r.TrangThaiTonKho.includes('HẾT')) badgeColor = 'bg-red-100 text-red-800 font-bold';
+          else if (r.TrangThaiTonKho.includes('CẢNH BÁO')) badgeColor = 'bg-amber-100 text-amber-800 font-bold';
+          else if (r.TrangThaiTonKho.includes('trung bình')) badgeColor = 'bg-blue-100 text-blue-800';
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="p-2.5 font-medium">${r.TenCN}</td>
+              <td class="p-2.5 text-slate-500">${r.TenKho}</td>
+              <td class="p-2.5 font-mono text-slate-400">SP-${r.MaSP}</td>
+              <td class="p-2.5 font-semibold text-slate-800">${r.TenSP}</td>
+              <td class="p-2.5 text-right font-bold">${r.SoLuongTon} ${r.DonViTinh}</td>
+              <td class="p-2.5 text-right font-mono text-blue-700 font-medium">${r.TyTrongTonKhoPct}%</td>
+              <td class="p-2.5 text-center"><span class="bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold">Hạng #${r.HangKhanHiemTaiChiNhanh}</span></td>
+              <td class="p-2.5 text-center"><span class="${badgeColor} px-2 py-0.5 rounded text-[11px]">${r.TrangThaiTonKho}</span></td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function searchProducts() {
+      const keyword = document.getElementById('searchKeyword').value;
+      const category = document.getElementById('searchCategory').value;
+
+      try {
+        let url = `/api/products/search?`;
+        if (keyword) url += `keyword=${encodeURIComponent(keyword)}&`;
+        if (category) url += `category=${category}`;
+
+        const res = await fetch(url, { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const box = document.getElementById('searchResultBox');
+        const container = document.getElementById('searchResults');
+        box.classList.remove('hidden');
+
+        if (data.products.length === 0) {
+          container.innerHTML = '<p class="text-slate-400 italic">Không tìm thấy sản phẩm phù hợp.</p>';
+          return;
+        }
+
+        container.innerHTML = `
+          <table class="w-full text-left">
+            <thead>
+              <tr class="bg-slate-100 text-slate-600 border-b">
+                <th class="p-1.5">Tên Sản Phẩm</th>
+                <th class="p-1.5">Danh Mục</th>
+                <th class="p-1.5 text-right">Giá Bán</th>
+                <th class="p-1.5 text-right">Tổng Tồn Kho Chuỗi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.products.map(p => `
+                <tr class="border-b hover:bg-slate-50">
+                  <td class="p-1.5 font-medium">${p.TenSP}</td>
+                  <td class="p-1.5 text-slate-500">${p.TenDM}</td>
+                  <td class="p-1.5 text-right font-bold text-blue-900">${Number(p.GiaBanHienTai).toLocaleString('vi-VN')} đ</td>
+                  <td class="p-1.5 text-right">${p.TongTonKhoToanHeThong} ${p.DonViTinh}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function transferStock(e) {
+      e.preventDefault();
+      const payload = {
+        maKhoXuat: Number(document.getElementById('tfKhoXuat').value),
+        maKhoNhap: Number(document.getElementById('tfKhoNhap').value),
+        maSP: Number(document.getElementById('tfMaSP').value),
+        soLuong: Number(document.getElementById('tfSoLuong').value),
+        maNV: Number(document.getElementById('tfMaNV').value)
+      };
+
+      try {
+        const res = await fetch('/api/inventory/transfer', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Thủ tục SP 3: ${data.ThongBao || 'Điều chuyển kho thành công!'}`, 'success');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function transferInterBranchTx(e) {
+      e.preventDefault();
+      const payload = {
+        maKhoXuat: Number(document.getElementById('tfKhoXuat').value),
+        maKhoNhap: Number(document.getElementById('tfKhoNhap').value),
+        maSP: Number(document.getElementById('tfMaSP').value),
+        soLuong: Number(document.getElementById('tfSoLuong').value)
+      };
+
+      try {
+        const res = await fetch('/api/inventory/inter-branch-transfer', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Giao dịch ACID Tx 5: Điều chuyển kho liên chi nhánh thành công!`, 'success');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadKpiReport() {
+      try {
+        const res = await fetch('/api/reports/staff-kpi?year=2026', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('kpiTableBody');
+        tbody.innerHTML = data.report.map(k => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-mono text-slate-500">NV-${k.MaNV}</td>
+            <td class="p-2 font-semibold text-slate-800">${k.HoTen}</td>
+            <td class="p-2 text-slate-500">${k.TenChiNhanh}</td>
+            <td class="p-2 text-center font-bold">${k.SoDonHangDaChot}</td>
+            <td class="p-2 text-right font-bold text-blue-900">${Number(k.TongDoanhSo).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-center"><span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-medium">${k.DanhGiaKPI}</span></td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadBranchRevenue() {
+      try {
+        const res = await fetch('/api/reports/branch-revenue?year=2026', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('branchRevenueBody');
+        tbody.innerHTML = data.report.map(b => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-bold text-slate-800">${b.TenCN}</td>
+            <td class="p-2 text-center">${b.TongSoDonHang}</td>
+            <td class="p-2 text-right">${b.TongSoLuongSanPhamBan}</td>
+            <td class="p-2 text-right font-medium">${Number(b.DoanhThuBanHang).toLocaleString('vi-VN')} đ</td>
+            <td class="p-2 text-right font-bold text-emerald-800">${Number(b.TongThuThucTe).toLocaleString('vi-VN')} đ</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadIndexedSales() {
+      try {
+        const res = await fetch('/api/reports/indexed-sales', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('indexedSalesBody');
+        tbody.innerHTML = data.sales.map(s => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-mono text-slate-500">SP-${s.MaSP}</td>
+            <td class="p-2 font-bold text-slate-800">${s.TenSP}</td>
+            <td class="p-2 text-center font-medium">${s.SoLanXuatHienTrongDon}</td>
+            <td class="p-2 text-right font-semibold">${s.TongSoLuongBan}</td>
+            <td class="p-2 text-right font-bold text-emerald-700">${Number(s.TongDoanhThuThuVe).toLocaleString('vi-VN')} đ</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadStaffHierarchy() {
+      try {
+        const res = await fetch('/api/reports/staff-hierarchy', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('hierarchyTableBody');
+        tbody.innerHTML = data.hierarchy.map(h => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-mono text-slate-500">NV-${h.MaNV}</td>
+            <td class="p-2 font-semibold text-slate-800">${h.TenNhanVien}</td>
+            <td class="p-2 text-slate-500">${h.ChiNhanhLamViec}</td>
+            <td class="p-2 text-blue-800 font-medium">${h.NguoiQuanLyTrucTiep}</td>
+            <td class="p-2 text-center font-bold">${h.SoNhanVienDuoiQuyen}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function loadBranch1Staff() {
+      try {
+        const res = await fetch('/api/reports/branch1-staff', { headers: getHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const tbody = document.getElementById('branch1StaffBody');
+        tbody.innerHTML = data.staffList.map(s => `
+          <tr class="hover:bg-slate-50">
+            <td class="p-2 font-mono text-slate-500">NV-${s.MaNV}</td>
+            <td class="p-2 font-semibold text-slate-800">${s.HoTen}</td>
+            <td class="p-2 text-center font-bold text-blue-700">${s.MaCN}</td>
+            <td class="p-2 text-center text-slate-500">${s.MaQL || '(Sếp Tổng)'}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function runBatchPromote() {
+      const minPoints = document.getElementById('bpDiemMin').value;
+      const bonus = document.getElementById('bpBonus').value;
+
+      try {
+        const res = await fetch('/api/customers/batch-promote', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ diemToiThieu: Number(minPoints), diemThuongBonus: Number(bonus) })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Giao dịch ACID Tx 4: ${data.KetQua} (${data.SoKhachDuocThangHang || 0} khách hàng được nâng hạng)`, 'success');
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    async function runStaffReorganize() {
+      const maNV = document.getElementById('roMaNV').value;
+      const maQL = document.getElementById('roMaQL').value;
+
+      try {
+        const res = await fetch('/api/staff/reorganize', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ maNVCantXoa: Number(maNV), maQLThayThe: Number(maQL) })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showAlert(`Giao dịch ACID Tx 3: ${data.KetQua || 'Tái cấu trúc nhân sự thành công!'}`, 'success');
+        loadStaffHierarchy();
+      } catch (err) {
+        showAlert(err.message, 'error');
+      }
+    }
+
+    // Auto-load invoice & discount preview on launch
+    window.addEventListener('DOMContentLoaded', () => {
+      loadInvoice(1);
+      previewDiscount();
+    });
+  </script>
+</body>
+</html>

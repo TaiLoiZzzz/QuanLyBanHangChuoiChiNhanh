@@ -3,7 +3,8 @@
 -- GIẢNG VIÊN: TS. PHAN THỊ THỂ
 -- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
 -- BƯỚC 4: XÂY DỰNG 5 HÀM NGƯỜI DÙNG (USER-DEFINED FUNCTIONS - UDF)
--- NGƯỜI PHỤ TRÁCH: QUÁCH TÀI LỢI (70%) - HỖ TRỢ: PHAN THIỆN KHỞI (7.5%)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
 -- =========================================================================
 
 USE QuanLyBanHangDB;
@@ -24,6 +25,7 @@ GO
 
 -- =========================================================================
 -- HÀM 1 (SCALAR FUNCTION): TÍNH THÀNH TIỀN SAU CHIẾT KHẤU THEO HẠNG THÀNH VIÊN
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
 -- Nghiệp vụ: Tự động tra cứu hạng khách hàng và áp dụng % giảm giá tương ứng
 --            (LoaiKH = 0: 0%, LoaiKH = 1 (VIP): Giảm 10%, LoaiKH = 2 (Kim Cương): Giảm 15%)
 -- =========================================================================
@@ -59,6 +61,7 @@ GO
 
 -- =========================================================================
 -- HÀM 2 (SCALAR FUNCTION): KIỂM TRA KHẢ NĂNG ĐÁP ỨNG TỒN KHO CỦA SẢN PHẨM
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
 -- Nghiệp vụ: Trả về 1 (Đủ hàng) hoặc 0 (Hết hàng/Thiếu hàng) cho giao dịch bán/chuyển kho
 -- =========================================================================
 CREATE FUNCTION dbo.fn_KiemTraKhaNangDapUngDonHang
@@ -91,6 +94,7 @@ GO
 
 -- =========================================================================
 -- HÀM 3 (INLINE TABLE-VALUED FUNCTION - iTVF): LỌC ĐƠN HÀNG THEO THỜI GIAN & CHI NHÁNH
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
 -- Kỹ thuật chuyên sâu: Inline TVF không dùng BEGIN...END, cho phép SQL Server Query Optimizer
 -- gộp trực tiếp vào kế hoạch thực thi chính (Inlining) để đạt tốc độ tối đa!
 -- =========================================================================
@@ -140,6 +144,7 @@ GO
 
 -- =========================================================================
 -- HÀM 4 (MULTI-STATEMENT TABLE-VALUED FUNCTION - mTVF): BÁO CÁO DOANH SỐ & KPI NHÂN VIÊN
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
 -- Kỹ thuật chuyên sâu: Khai báo biến bảng cấu trúc tùy biến @KetQua TABLE (...),
 -- tổng hợp dữ liệu và đánh giá xếp loại hiệu suất làm việc của nhân viên theo năm
 -- =========================================================================
@@ -188,6 +193,7 @@ GO
 
 -- =========================================================================
 -- HÀM 5 (SCALAR FUNCTION): TỰ ĐỘNG CHUẨN HÓA MÃ HÓA ĐƠN THEO FORMAT DOANH NGHIỆP
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
 -- Nghiệp vụ: Chuyển đổi mã số đơn hàng ID thành chuỗi nghiệp vụ quy chuẩn: HD-YYYYMMDD-00000X
 --            Ví dụ: MaDH = 1, Ngay = 18/10/2026 -> HD-20261018-000001
 -- =========================================================================
