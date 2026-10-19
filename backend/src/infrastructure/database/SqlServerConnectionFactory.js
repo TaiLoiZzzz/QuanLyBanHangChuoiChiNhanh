@@ -8,7 +8,7 @@ class SqlServerConnectionFactory {
 
   getBaseConfig() {
     return {
-      server: process.env.DB_SERVER || 'localhost',
+      server: process.env.DB_SERVER || process.env.DB_HOST || 'localhost',
       port: Number(process.env.DB_PORT) || 14333,
       database: process.env.DB_NAME || 'QuanLyBanHangDB',
       options: {

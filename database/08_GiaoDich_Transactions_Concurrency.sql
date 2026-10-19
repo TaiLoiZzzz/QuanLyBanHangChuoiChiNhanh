@@ -246,7 +246,17 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- Khóa tài nguyên kho xuất với UPDLOCK
+        -- TRIỆT TIÊU HOÀN TOÀN DEADLOCK BẰNG KỸ THUẬT LOCK ORDERING (MIN TRƯỚC, MAX SAU)
+        -- Ngăn chặn Wait-For Graph khép kín khi 2 phiên cùng chuyển hàng chéo chiều nhau giữa 2 kho
+        DECLARE @KhoNho INT = CASE WHEN @MaKhoXuat < @MaKhoNhap THEN @MaKhoXuat ELSE @MaKhoNhap END;
+        DECLARE @KhoLon INT = CASE WHEN @MaKhoXuat < @MaKhoNhap THEN @MaKhoNhap ELSE @MaKhoXuat END;
+
+        -- Khóa trước kho có mã nhỏ hơn, sau đó khóa kho có mã lớn hơn
+        DECLARE @DummyLock INT;
+        SELECT @DummyLock = SoLuongTon FROM TonKho WITH (UPDLOCK, HOLDLOCK) WHERE MaKho = @KhoNho AND MaSP = @MaSP;
+        SELECT @DummyLock = SoLuongTon FROM TonKho WITH (UPDLOCK, HOLDLOCK) WHERE MaKho = @KhoLon AND MaSP = @MaSP;
+
+        -- Kiểm tra tồn kho thực tế tại kho nguồn xuất hàng
         DECLARE @TonKhoXuat INT;
         SELECT @TonKhoXuat = SoLuongTon 
         FROM TonKho WITH (UPDLOCK, HOLDLOCK)

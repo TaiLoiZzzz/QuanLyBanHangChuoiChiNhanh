@@ -149,7 +149,7 @@ class SqlServerOrderRepository extends IOrderRepository {
     const request = pool.request();
 
     request.input('MaDH', sql.Int, maDH);
-    request.input('LyDoHuy', sql.NVarChar(200), lyDoHuy || N'Khách đổi ý');
+    request.input('LyDoHuy', sql.NVarChar(200), lyDoHuy || 'Khách đổi ý');
 
     const result = await request.execute('dbo.usp_Tx_HuyDonHangVaHoanTonKho');
     return result.recordset?.[0] || { success: true };
