@@ -1,6 +1,8 @@
 // API Client kết nối với Backend Express (Port 5000)
 
-const BASE_URL = '/api';
+const BASE_URL = typeof window !== 'undefined' && (window.location.port === '5173' || window.location.port === '3000')
+  ? 'http://localhost:5000/api'
+  : '/api';
 
 export function getAuthHeaders() {
   const savedUser = localStorage.getItem('dbms_user');
@@ -23,6 +25,27 @@ export function getAuthHeaders() {
   };
 }
 
+async function parseResponse(res) {
+  const contentType = res.headers.get('content-type') || '';
+  let data;
+  if (contentType.includes('application/json')) {
+    data = await res.json();
+  } else {
+    const text = await res.text();
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, message: text || `Lỗi phản hồi HTTP: ${res.status}` };
+    }
+  }
+
+  if (!res.ok && (!data || !data.success)) {
+    const msg = data?.message || data?.error || `Lỗi máy chủ (${res.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
 export const api = {
   // Auth
   login: async (username, password) => {
@@ -31,13 +54,13 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   // Products
   getProducts: async () => {
     const res = await fetch(`${BASE_URL}/products`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   searchProducts: async (params = {}) => {
@@ -48,7 +71,7 @@ export const api = {
     if (params.giaMax) query.append('giaMax', params.giaMax);
 
     const res = await fetch(`${BASE_URL}/products/search?${query.toString()}`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   createProduct: async (data) => {
@@ -57,7 +80,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   updateProduct: async (id, data) => {
@@ -66,7 +89,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   deleteProduct: async (id) => {
@@ -74,13 +97,13 @@ export const api = {
       method: 'DELETE',
       headers: getAuthHeaders()
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   // Master Data (Chi nhánh, Kho, Danh mục, Khách hàng, Nhân sự)
   getBranches: async () => {
     const res = await fetch(`${BASE_URL}/branches`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   createBranch: async (data) => {
@@ -89,22 +112,22 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   getWarehouses: async () => {
     const res = await fetch(`${BASE_URL}/warehouses`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   getCategories: async () => {
     const res = await fetch(`${BASE_URL}/categories`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   getCustomers: async () => {
     const res = await fetch(`${BASE_URL}/customers`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   createCustomer: async (data) => {
@@ -113,12 +136,12 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   getEmployees: async () => {
     const res = await fetch(`${BASE_URL}/employees`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   createEmployee: async (data) => {
@@ -127,7 +150,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   // Orders
@@ -138,12 +161,12 @@ export const api = {
     if (params.maCN) query.append('maCN', params.maCN);
 
     const res = await fetch(`${BASE_URL}/orders?${query.toString()}`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   getInvoiceDetail: async (orderId) => {
     const res = await fetch(`${BASE_URL}/orders/${orderId}/invoice`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   createOrder: async (data) => {
@@ -152,7 +175,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   createOrderAtomic: async (data) => {
@@ -161,7 +184,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   updateOrderStatus: async (orderId, trangThai) => {
@@ -170,7 +193,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ trangThai })
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   cancelOrder: async (orderId, lyDoHuy) => {
@@ -179,27 +202,27 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ lyDoHuy })
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   checkStock: async (maKho, maSP, soLuong) => {
     const res = await fetch(`${BASE_URL}/orders/check-stock?maKho=${maKho}&maSP=${maSP}&soLuong=${soLuong}`, {
       headers: getAuthHeaders()
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   calculateVipDiscount: async (maKH, tongTienGoc) => {
     const res = await fetch(`${BASE_URL}/orders/vip-discount?maKH=${maKH}&tongTienGoc=${tongTienGoc}`, {
       headers: getAuthHeaders()
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   // Inventory & Reports
   getRankedInventoryReport: async () => {
     const res = await fetch(`${BASE_URL}/inventory/ranked-report`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   transferStockInternal: async (data) => {
@@ -208,7 +231,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   transferStockInterBranch: async (data) => {
@@ -217,7 +240,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify(data)
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   getBranchRevenue: async (year, month) => {
@@ -225,29 +248,29 @@ export const api = {
     if (year) query.append('year', year);
     if (month) query.append('month', month);
     const res = await fetch(`${BASE_URL}/reports/branch-revenue?${query.toString()}`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   getStaffKpi: async (year) => {
     const query = new URLSearchParams();
     if (year) query.append('year', year);
     const res = await fetch(`${BASE_URL}/reports/staff-kpi?${query.toString()}`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   getIndexedSales: async () => {
     const res = await fetch(`${BASE_URL}/reports/indexed-sales`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   getStaffHierarchy: async () => {
     const res = await fetch(`${BASE_URL}/reports/staff-hierarchy`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   getBranch1Staff: async () => {
     const res = await fetch(`${BASE_URL}/reports/branch1-staff`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   },
 
   reorganizeStaff: async (maNVCantXoa, maQLThayThe) => {
@@ -256,7 +279,7 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ maNVCantXoa, maQLThayThe })
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   batchPromoteCustomers: async (diemToiThieu, diemThuongBonus) => {
@@ -265,11 +288,11 @@ export const api = {
       headers: getAuthHeaders(),
       body: JSON.stringify({ diemToiThieu, diemThuongBonus })
     });
-    return res.json();
+    return parseResponse(res);
   },
 
   getAuditLogs: async () => {
     const res = await fetch(`${BASE_URL}/audit-logs`, { headers: getAuthHeaders() });
-    return res.json();
+    return parseResponse(res);
   }
 };
