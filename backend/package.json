@@ -7,8 +7,9 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test_deep_business.js",
-    "test:business": "node test_deep_business.js"
+    "test": "node test_deep_full_system.js",
+    "test:business": "node test_deep_business.js",
+    "test:system": "node test_deep_full_system.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

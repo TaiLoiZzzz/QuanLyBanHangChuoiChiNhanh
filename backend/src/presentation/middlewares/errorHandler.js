@@ -15,12 +15,17 @@ function errorHandler(err, req, res, next) {
     userFriendlyMessage = 'Ngoại lệ kết nối: Mất kết nối tới máy chủ Microsoft SQL Server (Port 14333). Vui lòng kiểm tra Docker Container hoặc dịch vụ SQL Server!';
     statusCode = 503;
   }
-  // 2. Ngoại lệ bảo mật phân quyền (Permission Denied - Least Privilege)
+  // 2. Ngoại lệ xác thực tài khoản CSDL thất bại (Login Failed)
+  else if (err.number === 18456 || err.message?.includes('Đăng nhập thất bại') || err.message?.includes('Login failed')) {
+    userFriendlyMessage = 'Xác thực thất bại: Tên đăng nhập hoặc mật khẩu SQL Server không chính xác!';
+    statusCode = 401;
+  }
+  // 3. Ngoại lệ bảo mật phân quyền (Permission Denied - Least Privilege)
   else if (err.number === 229 || err.message?.includes('permission was denied')) {
     userFriendlyMessage = `Ngoại lệ bảo mật: Tài khoản CSDL hiện tại bị từ chối quyền thực thi thao tác này (Chính sách Least Privilege)! Chi tiết: ${err.message}`;
     statusCode = 403;
   }
-  // 3. Ngoại lệ vi phạm ràng buộc toàn vẹn (CHECK / FOREIGN KEY / UNIQUE Constraint)
+  // 4. Ngoại lệ vi phạm ràng buộc toàn vẹn (CHECK / FOREIGN KEY / UNIQUE Constraint)
   else if (err.number === 547) {
     userFriendlyMessage = `Ngoại lệ toàn vẹn dữ liệu: Vi phạm ràng buộc toàn vẹn (CHECK hoặc Khóa ngoại FK). Dữ liệu nhập không hợp lệ!`;
     statusCode = 422;
@@ -29,10 +34,10 @@ function errorHandler(err, req, res, next) {
     userFriendlyMessage = `Ngoại lệ trùng lặp: Vi phạm ràng buộc duy nhất (UNIQUE hoặc Khóa chính PK). Dữ liệu đã tồn tại!`;
     statusCode = 409;
   }
-  // 4. Ngoại lệ nghiệp vụ từ Stored Procedure (RAISERROR / THROW 50000+)
-  else if (err.number >= 50000 || err.message?.includes('Lỗi')) {
+  // 5. Ngoại lệ nghiệp vụ từ Stored Procedure / THROW 50000+
+  else if (err.number >= 50000 || err.message?.includes('Lỗi') || err.message?.includes('không được trùng')) {
     userFriendlyMessage = err.message;
-    statusCode = 400;
+    statusCode = 422;
   }
 
   return res.status(statusCode).json({
