@@ -29,8 +29,8 @@ class SqlServerMasterRepository {
 
     const query = `
       INSERT INTO ChiNhanh (TenCN, DiaChi, SoDT)
-      OUTPUT INSERTED.MaCN, INSERTED.TenCN, INSERTED.DiaChi, INSERTED.SoDT
       VALUES (@TenCN, @DiaChi, @SoDT);
+      SELECT SCOPE_IDENTITY() AS MaCN, @TenCN AS TenCN, @DiaChi AS DiaChi, @SoDT AS SoDT;
     `;
     const result = await request.query(query);
     return result.recordset[0];
@@ -103,8 +103,8 @@ class SqlServerMasterRepository {
 
     const query = `
       INSERT INTO KhachHang (HoTen, SoDT, LoaiKH, DiemTichLuy)
-      OUTPUT INSERTED.MaKH, INSERTED.HoTen, INSERTED.SoDT, INSERTED.LoaiKH, INSERTED.DiemTichLuy
       VALUES (@HoTen, @SoDT, @LoaiKH, @DiemTichLuy);
+      SELECT SCOPE_IDENTITY() AS MaKH, @HoTen AS HoTen, @SoDT AS SoDT, @LoaiKH AS LoaiKH, @DiemTichLuy AS DiemTichLuy;
     `;
     const result = await request.query(query);
     return result.recordset[0];

@@ -43,8 +43,8 @@ class SqlServerProductRepository extends IProductRepository {
 
     const query = `
       INSERT INTO SanPham (TenSP, MaDM, GiaBanHienTai, DonViTinh, DaXoa)
-      OUTPUT INSERTED.MaSP, INSERTED.TenSP, INSERTED.MaDM, INSERTED.GiaBanHienTai, INSERTED.DonViTinh
       VALUES (@TenSP, @MaDM, @GiaBanHienTai, @DonViTinh, 0);
+      SELECT SCOPE_IDENTITY() AS MaSP, @TenSP AS TenSP, @MaDM AS MaDM, @GiaBanHienTai AS GiaBanHienTai, @DonViTinh AS DonViTinh;
     `;
     const result = await request.query(query);
     const newSp = result.recordset[0];
@@ -73,8 +73,8 @@ class SqlServerProductRepository extends IProductRepository {
     const query = `
       UPDATE SanPham
       SET TenSP = @TenSP, MaDM = @MaDM, GiaBanHienTai = @GiaBanHienTai, DonViTinh = @DonViTinh
-      OUTPUT INSERTED.MaSP, INSERTED.TenSP, INSERTED.MaDM, INSERTED.GiaBanHienTai, INSERTED.DonViTinh
       WHERE MaSP = @MaSP AND DaXoa = 0;
+      SELECT @MaSP AS MaSP, @TenSP AS TenSP, @MaDM AS MaDM, @GiaBanHienTai AS GiaBanHienTai, @DonViTinh AS DonViTinh;
     `;
     const result = await request.query(query);
     return result.recordset[0];
