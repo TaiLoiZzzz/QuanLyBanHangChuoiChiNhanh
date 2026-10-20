@@ -3,8 +3,8 @@ import { api } from '../api/apiClient';
 import { ShieldCheck, User, Lock, AlertCircle, CheckCircle2, Database, KeyRound, ArrowRight } from 'lucide-react';
 
 export default function LoginScreen({ onLoginSuccess }) {
-  const [username, setUsername] = useState('Login_Admin');
-  const [password, setPassword] = useState('AdminPassword@2026');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -13,35 +13,30 @@ export default function LoginScreen({ onLoginSuccess }) {
     {
       label: 'Quản trị viên (Admin)',
       user: 'Login_Admin',
-      pass: 'AdminPassword@2026',
       role: 'Role_Admin',
       desc: 'Toàn quyền điều hành hệ thống (Full Control Database)'
     },
     {
       label: 'Quản lý Chi nhánh',
       user: 'Login_QuanLyChiNhanh',
-      pass: 'ManagerPassword@2026',
       role: 'Role_QuanLyChiNhanh',
       desc: 'Xem báo cáo, KPI, điều chuyển kho, xem phân cấp nhân sự'
     },
     {
       label: 'Thu ngân (Cashier)',
       user: 'Login_ThuNgan',
-      pass: 'CashierPassword@2026',
       role: 'Role_ThuNgan',
       desc: 'Lập đơn hàng, in hóa đơn, tra cứu khách hàng VIP'
     },
     {
       label: 'Thủ kho (Stockkeeper)',
       user: 'Login_ThuKho',
-      pass: 'StockPassword@2026',
       role: 'Role_ThuKho',
       desc: 'Theo dõi tồn kho xếp hạng, điều chuyển kho'
     },
     {
       label: 'System Admin (SA)',
       user: 'sa',
-      pass: 'PasswordAdmin@2026',
       role: 'sysadmin',
       desc: 'Tài khoản gốc SQL Server 2022'
     }
@@ -49,7 +44,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   const handleSelectPreset = (p) => {
     setUsername(p.user);
-    setPassword(p.pass);
+    setPassword('');
     setError(null);
   };
 
@@ -68,12 +63,7 @@ export default function LoginScreen({ onLoginSuccess }) {
       const res = await api.login(username, password);
       if (res.success) {
         setSuccessMsg(`Đăng nhập thành công! Vai trò: ${res.role}`);
-        const userObj = {
-          username: res.username,
-          password,
-          role: res.role
-        };
-        localStorage.setItem('dbms_user', JSON.stringify(userObj));
+        const userObj = { username: res.username, role: res.role };
         setTimeout(() => {
           onLoginSuccess(userObj);
         }, 600);
@@ -211,7 +201,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Database size={14} /> SQL Server 2022
             </span>
-            <span>Port: 11433 • Database: QuanLyBanHangDB</span>
+            <span>Cấu hình kết nối do máy chủ quản lý</span>
           </div>
         </div>
 

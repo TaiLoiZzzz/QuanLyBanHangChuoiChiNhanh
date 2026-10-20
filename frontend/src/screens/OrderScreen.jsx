@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { sumInvoice } from '../utils/invoice';
 import { api } from '../api/apiClient';
 import { 
   ShoppingCart, Plus, RefreshCw, AlertCircle, CheckCircle2, 
@@ -29,6 +30,7 @@ export default function OrderScreen({ currentUser }) {
   const [maCN, setMaCN] = useState('');
 
   // Modals
+  const [saving, setSaving] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [orderForm, setOrderForm] = useState({
     maKH: '',
@@ -57,7 +59,7 @@ export default function OrderScreen({ currentUser }) {
     try {
       const res = await api.getOrders({
         tuNgay: tuNgay ? `${tuNgay} 00:00:00` : null,
-        denNgay: denNgay ? `${denNgay} 23:59:59` : null,
+        denNgay: denNgay ? `${denNgay} 23:59:59.997` : null,
         maCN: maCN ? Number(maCN) : null
       });
       if (res.success) setOrders(res.orders || []);
@@ -141,11 +143,13 @@ export default function OrderScreen({ currentUser }) {
 
   const handleCreateOrder = async (e) => {
     e.preventDefault();
+    if(saving) return;
     if (!orderForm.maKH || !orderForm.maNV || !orderForm.maKhoXuat || !orderForm.maSP || !orderForm.soLuong) {
       setError('Vui lòng điền đầy đủ các thông tin bắt buộc.');
       return;
     }
 
+    setSaving(true);
     try {
       let res;
       if (orderForm.useHoldlock) {
@@ -176,7 +180,7 @@ export default function OrderScreen({ currentUser }) {
       fetchOrders();
     } catch (err) {
       setError(err.message || 'Lỗi khi tạo đơn hàng.');
-    }
+    } finally { setSaving(false); }
   };
 
   // View Invoice Detail (View 4 + fn_FormatMaHoaDonTuDong)
@@ -185,7 +189,8 @@ export default function OrderScreen({ currentUser }) {
       const res = await api.getInvoiceDetail(orderId);
       if (res.success && res.items.length > 0) {
         setInvoiceData(res.items);
-        setCurrentOrder(res.items[0]);
+        const totals = sumInvoice(res.items);
+        setCurrentOrder({ ...res.items[0], ...totals });
         setIsInvoiceModalOpen(true);
       } else {
         setError('Không tìm thấy chi tiết hóa đơn cho đơn hàng này.');
@@ -461,6 +466,7 @@ export default function OrderScreen({ currentUser }) {
             </div>
             <form onSubmit={handleCreateOrder}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 {/* Holdlock notice */}
                 <div style={{
                   padding: '12px 16px',
@@ -604,7 +610,7 @@ export default function OrderScreen({ currentUser }) {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setIsCreateModalOpen(false)}>Hủy</button>
-                <button type="submit" className="btn btn-primary">Xác Nhận Tạo Đơn</button>
+                <button type="submit" disabled={saving} className="btn btn-primary">{saving ? 'Đang lưu…' : 'Xác Nhận Tạo Đơn'}</button>
               </div>
             </form>
           </div>
@@ -662,7 +668,7 @@ export default function OrderScreen({ currentUser }) {
                   <div style={{ padding: '12px', backgroundColor: '#F8FAFC', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
                     <span style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--text-muted)', fontWeight: 700 }}>Chính Sách Chiết Khấu VIP</span>
                     <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      Áp dụng Scalar UDF <code>fn_TinhTienSauChietKhauVIP</code>
+                      Chiết khấu và thuế đã chốt khi lập đơn
                     </p>
                     <p style={{ fontSize: '12px', color: '#16A34A', fontWeight: 600 }}>
                       Thuế suất VAT ưu đãi chuẩn hóa: 8%
@@ -749,6 +755,7 @@ export default function OrderScreen({ currentUser }) {
             </div>
             <form onSubmit={handleCancelOrder}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 <div className="alert alert-info" style={{ marginBottom: '16px', fontSize: '12.5px' }}>
                   <span>
                     Thủ tục <code>usp_Tx_HuyDonHangVaHoanTonKho</code> chuyển trạng thái đơn hàng sang 4 (Đã hủy) và cộng bù chính xác số lượng hàng vào bảng <code>TonKho</code> trong 1 giao dịch nguyên tử.

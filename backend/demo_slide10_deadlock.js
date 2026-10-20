@@ -18,9 +18,10 @@
 const sql = require('mssql');
 require('dotenv').config({ path: './backend/.env' });
 
+if (!process.env.DB_NAME?.startsWith('DBMSTest_') && !process.env.DB_NAME?.endsWith('_Benchmark')) throw new Error('Deadlock demo requires a disposable DBMSTest_* or *_Benchmark database.');
 const dbConfig = {
   user: process.env.DB_USER || 'sa',
-  password: process.env.DB_PASSWORD || 'PasswordAdmin@2026',
+  password: process.env.DB_PASSWORD,
   server: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT, 10) || 11433,
   database: process.env.DB_NAME || 'QuanLyBanHangDB',

@@ -15,7 +15,7 @@ export default function OrganizationScreen({ currentUser }) {
   const canBatchPromote = canPerformAction(userRole, 'BATCH_PROMOTE_CUSTOMERS');
   const canAddCustomer = canPerformAction(userRole, 'ADD_CUSTOMER');
 
-  const [activeTab, setActiveTab] = useState('branches'); // 'branches' | 'employees' | 'customers'
+  const [activeTab, setActiveTab] = useState(userRole === ROLES.CASHIER ? 'customers' : 'branches'); // 'branches' | 'employees' | 'customers'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -30,7 +30,7 @@ export default function OrganizationScreen({ currentUser }) {
   // Fallback danh sách nhân sự từ View nếu bảng thô NhanVien bị ẩn lương
   const staffList = employees.length > 0 
     ? employees 
-    : hierarchy.map((h) => ({ MaNV: h.MaNV, HoTen: h.HoTen, TenCN: h.TenCN }));
+    : hierarchy.map((h) => ({ MaNV: h.MaNV, HoTen: h.TenNhanVien, TenCN: h.ChiNhanhLamViec }));
 
   // Modals
   const [isBranchModalOpen, setIsBranchModalOpen] = useState(false);
@@ -58,11 +58,11 @@ export default function OrganizationScreen({ currentUser }) {
     setError(null);
     try {
       const results = await Promise.allSettled([
-        api.getBranches(),
-        api.getEmployees(),
+        userRole === ROLES.CASHIER ? Promise.resolve(null) : api.getBranches(),
+        userRole === ROLES.CASHIER ? Promise.resolve(null) : api.getEmployees(),
         api.getCustomers(),
-        api.getStaffHierarchy(),
-        api.getBranch1Staff()
+        userRole === ROLES.CASHIER ? Promise.resolve(null) : api.getStaffHierarchy(),
+        userRole === ROLES.CASHIER ? Promise.resolve(null) : api.getBranch1Staff()
       ]);
 
       const [bRes, eRes, cRes, hRes, b1Res] = results;
@@ -296,18 +296,18 @@ export default function OrganizationScreen({ currentUser }) {
       {/* Tabs Menu */}
       <div className="card" style={{ padding: 0 }}>
         <div className="tabs-container">
-          <button
+          {userRole !== ROLES.CASHIER && <button
             className={`tab-btn ${activeTab === 'branches' ? 'active' : ''}`}
             onClick={() => setActiveTab('branches')}
           >
             <Building2 size={18} /> Chi Nhánh Hệ Thống ({branches.length})
-          </button>
-          <button
+          </button>}
+          {userRole !== ROLES.CASHIER && <button
             className={`tab-btn ${activeTab === 'employees' ? 'active' : ''}`}
             onClick={() => setActiveTab('employees')}
           >
             <Users size={18} /> Nhân Sự & Cây Phân Cấp ({employees.length > 0 ? employees.length : hierarchy.length})
-          </button>
+          </button>}
           <button
             className={`tab-btn ${activeTab === 'customers' ? 'active' : ''}`}
             onClick={() => setActiveTab('customers')}
@@ -576,6 +576,7 @@ export default function OrganizationScreen({ currentUser }) {
             </div>
             <form onSubmit={handleCreateBranch}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 <div className="form-group">
                   <label className="form-label">Tên chi nhánh *</label>
                   <input
@@ -629,6 +630,7 @@ export default function OrganizationScreen({ currentUser }) {
             </div>
             <form onSubmit={handleCreateEmployee}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 <div className="alert alert-info" style={{ marginBottom: '16px', fontSize: '12.5px' }}>
                   <span>Trigger <code>trg_NhanVien_AuditLog</code> sẽ tự động ghi vết hành động thêm nhân viên mới vào bảng <code>NhatKyHeThong</code>.</span>
                 </div>
@@ -704,6 +706,7 @@ export default function OrganizationScreen({ currentUser }) {
             </div>
             <form onSubmit={handleCreateCustomer}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 <div className="form-group">
                   <label className="form-label">Họ và tên khách hàng *</label>
                   <input
@@ -732,12 +735,12 @@ export default function OrganizationScreen({ currentUser }) {
                     <label className="form-label">Hạng thành viên ban đầu</label>
                     <select
                       className="form-select"
-                      value={customerForm.loaiKH}
+                      disabled={userRole === ROLES.CASHIER} value={customerForm.loaiKH}
                       onChange={(e) => setCustomerForm({ ...customerForm, loaiKH: e.target.value })}
                     >
                       <option value="0">Thường (0%)</option>
-                      <option value="1">VIP (Giảm 5%)</option>
-                      <option value="2">Kim Cương (Giảm 10%)</option>
+                      <option value="1">VIP (Giảm 10%)</option>
+                      <option value="2">Kim Cương (Giảm 15%)</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -745,7 +748,7 @@ export default function OrganizationScreen({ currentUser }) {
                     <input
                       type="number"
                       className="form-input"
-                      value={customerForm.diemTichLuy}
+                      disabled={userRole === ROLES.CASHIER} value={customerForm.diemTichLuy}
                       onChange={(e) => setCustomerForm({ ...customerForm, diemTichLuy: e.target.value })}
                     />
                   </div>
@@ -770,6 +773,7 @@ export default function OrganizationScreen({ currentUser }) {
             </div>
             <form onSubmit={handleReorganizeStaff}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 <div className="alert alert-info" style={{ marginBottom: '16px', fontSize: '12.5px' }}>
                   <span>
                     Thủ tục <code>usp_Tx_XoaNhanVienVaDieuChuyenQuanLy</code> đảm bảo chuyển toàn bộ nhân viên dưới quyền của người bị xóa sang người quản lý mới trong 1 Transaction nguyên tử (Atomic).
@@ -827,6 +831,7 @@ export default function OrganizationScreen({ currentUser }) {
             </div>
             <form onSubmit={handleBatchPromote}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 <div className="alert alert-info" style={{ marginBottom: '16px', fontSize: '12.5px' }}>
                   <span>
                     Thủ tục <code>usp_Tx_ThangHangThanhVienHangLoat</code> quét toàn bộ khách hàng đạt ngưỡng điểm để nâng hạng VIP và tặng điểm thưởng tri ân.

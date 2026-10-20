@@ -7,14 +7,13 @@ import {
 
 import { getUserRole, canPerformAction, ROLES } from '../utils/permissions';
 
-export default function ProductScreen() {
+export default function ProductScreen({ currentUser }) {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const currentUser = JSON.parse(localStorage.getItem('dbms_user') || '{}');
   const userRole = getUserRole(currentUser);
   const canAddProduct = canPerformAction(userRole, 'ADD_PRODUCT');
   const canEditProduct = canPerformAction(userRole, 'EDIT_PRODUCT');
@@ -368,6 +367,7 @@ export default function ProductScreen() {
             </div>
             <form onSubmit={handleSaveProduct}>
               <div className="modal-body">
+                {error && <div className="alert alert-danger" role="alert">{error}</div>}
                 {editingProduct && (
                   <div className="alert alert-info" style={{ marginBottom: '16px', fontSize: '12.5px' }}>
                     <History size={16} />

@@ -34,127 +34,44 @@ GO
 --   - Đồng bộ giá trị TongTien cho bảng DonHang (Bảo đảm tính toàn vẹn 3NF phi chuẩn hóa)
 -- Kỹ thuật: 100% Set-based multi-row, kiểm tra @@ROWCOUNT = 0 chốt chặn hiệu năng
 -- =========================================================================
-CREATE TRIGGER trg_ChiTietDonHang_SyncKho_TongTien
-ON ChiTietDonHang
-AFTER INSERT, UPDATE, DELETE
-AS
+CREATE TRIGGER dbo.trg_ChiTietDonHang_SyncKho_TongTien
+ON dbo.ChiTietDonHang AFTER INSERT, UPDATE, DELETE AS
 BEGIN
-    -- 1. Chốt chặn hiệu năng: Kiểm tra @@ROWCOUNT trước mọi câu lệnh khác
     IF @@ROWCOUNT = 0 RETURN;
-
     SET NOCOUNT ON;
-
-    -- =========================================================================
-    -- TRƯỜNG HỢP A: THAO TÁC INSERT (THÊM MỚI CHI TIẾT ĐƠN HÀNG)
-    -- =========================================================================
-    IF EXISTS (SELECT 1 FROM inserted) AND NOT EXISTS (SELECT 1 FROM deleted)
-    BEGIN
-        -- A.1. Kiểm tra tồn kho trước khi cho phép trừ (Chống bán âm kho)
-        IF EXISTS (
-            SELECT 1
-            FROM (
-                SELECT dh.MaKhoXuat, i.MaSP, SUM(i.SoLuong) AS TongSoLuongYeuCau
-                FROM inserted i
-                INNER JOIN DonHang dh ON i.MaDH = dh.MaDH
-                GROUP BY dh.MaKhoXuat, i.MaSP
-            ) req
-            INNER JOIN TonKho tk ON req.MaKhoXuat = tk.MaKho AND req.MaSP = tk.MaSP
-            WHERE tk.SoLuongTon < req.TongSoLuongYeuCau
-        )
-        BEGIN
-            RAISERROR (N'Lỗi giao dịch: Không đủ số lượng tồn kho để đáp ứng đơn hàng mới!', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END;
-
-        -- A.2. Trừ số lượng trong TonKho
-        UPDATE tk
-        SET tk.SoLuongTon = tk.SoLuongTon - req.TongSoLuongYeuCau
-        FROM TonKho tk
-        INNER JOIN (
-            SELECT dh.MaKhoXuat, i.MaSP, SUM(i.SoLuong) AS TongSoLuongYeuCau
-            FROM inserted i
-            INNER JOIN DonHang dh ON i.MaDH = dh.MaDH
-            GROUP BY dh.MaKhoXuat, i.MaSP
-        ) req ON tk.MaKho = req.MaKhoXuat AND tk.MaSP = req.MaSP;
-    END;
-
-    -- =========================================================================
-    -- TRƯỜNG HỢP B: THAO TÁC UPDATE (ĐIỀU CHỈNH SỐ LƯỢNG MUA TRONG ĐƠN)
-    -- =========================================================================
+    -- Serialize line changes with cancellation/completion of the parent order.
+    DECLARE @Locked INT;
+    SELECT @Locked = COUNT(*) FROM dbo.DonHang WITH (UPDLOCK, HOLDLOCK)
+    WHERE MaDH IN (SELECT MaDH FROM inserted UNION SELECT MaDH FROM deleted);
+    IF EXISTS (SELECT 1 FROM inserted i JOIN dbo.DonHang dh ON dh.MaDH=i.MaDH WHERE dh.TrangThai IN (3,4))
+       OR EXISTS (SELECT 1 FROM deleted d JOIN dbo.DonHang dh ON dh.MaDH=d.MaDH WHERE dh.TrangThai=3)
+        THROW 51101, N'Không thể sửa chi tiết đơn đã giao hoặc thêm hàng vào đơn đã hủy.', 1;
     IF EXISTS (SELECT 1 FROM inserted) AND EXISTS (SELECT 1 FROM deleted)
-    BEGIN
-        IF UPDATE(SoLuong)
-        BEGIN
-            -- B.1. Kiểm tra nếu tăng số lượng thì kho có đủ hàng bù đắp không
-            IF EXISTS (
-                SELECT 1
-                FROM (
-                    SELECT dh.MaKhoXuat, i.MaSP, SUM(i.SoLuong - d.SoLuong) AS ChenhLechTang
-                    FROM inserted i
-                    INNER JOIN deleted d ON i.MaDH = d.MaDH AND i.MaSP = d.MaSP
-                    INNER JOIN DonHang dh ON i.MaDH = dh.MaDH
-                    GROUP BY dh.MaKhoXuat, i.MaSP
-                ) delta
-                INNER JOIN TonKho tk ON delta.MaKhoXuat = tk.MaKho AND delta.MaSP = tk.MaSP
-                WHERE delta.ChenhLechTang > 0 AND tk.SoLuongTon < delta.ChenhLechTang
-            )
-            BEGIN
-                RAISERROR (N'Lỗi cập nhật: Số lượng tăng thêm vượt quá tồn kho khả dụng!', 16, 1);
-                ROLLBACK TRANSACTION;
-                RETURN;
-            END;
-
-            -- B.2. Cập nhật lại tồn kho theo giá trị bù trừ
-            UPDATE tk
-            SET tk.SoLuongTon = tk.SoLuongTon - delta.ChenhLech
-            FROM TonKho tk
-            INNER JOIN (
-                SELECT dh.MaKhoXuat, i.MaSP, SUM(i.SoLuong - d.SoLuong) AS ChenhLech
-                FROM inserted i
-                INNER JOIN deleted d ON i.MaDH = d.MaDH AND i.MaSP = d.MaSP
-                INNER JOIN DonHang dh ON i.MaDH = dh.MaDH
-                GROUP BY dh.MaKhoXuat, i.MaSP
-            ) delta ON tk.MaKho = delta.MaKhoXuat AND tk.MaSP = delta.MaSP;
-        END;
-    END;
-
-    -- =========================================================================
-    -- TRƯỜNG HỢP C: THAO TÁC DELETE (XÓA BỚT MÓN HÀNG RA KHỎI ĐƠN)
-    -- =========================================================================
-    IF NOT EXISTS (SELECT 1 FROM inserted) AND EXISTS (SELECT 1 FROM deleted)
-    BEGIN
-        -- Hoàn trả số lượng đã xóa về lại cho TonKho
-        UPDATE tk
-        SET tk.SoLuongTon = tk.SoLuongTon + del.TongSoLuongHoan
-        FROM TonKho tk
-        INNER JOIN (
-            SELECT dh.MaKhoXuat, d.MaSP, SUM(d.SoLuong) AS TongSoLuongHoan
-            FROM deleted d
-            INNER JOIN DonHang dh ON d.MaDH = dh.MaDH
-            GROUP BY dh.MaKhoXuat, d.MaSP
-        ) del ON tk.MaKho = del.MaKhoXuat AND tk.MaSP = del.MaSP;
-    END;
-
-    -- =========================================================================
-    -- ĐỒNG BỘ CỘT TỔNG TIỀN TRONG BẢNG ĐƠN HÀNG (CHO CẢ 3 THAO TÁC INSERT/UPDATE/DELETE)
-    -- =========================================================================
-    UPDATE dh
-    SET dh.TongTien = ISNULL(sub.TongTienChiTiet, 0)
-    FROM DonHang dh
-    INNER JOIN (
-        SELECT affected.MaDH, SUM(ct.ThanhTien) AS TongTienChiTiet
-        FROM (
-            SELECT MaDH FROM inserted
-            UNION
-            SELECT MaDH FROM deleted
-        ) affected
-        LEFT JOIN ChiTietDonHang ct ON affected.MaDH = ct.MaDH
-        GROUP BY affected.MaDH
-    ) sub ON dh.MaDH = sub.MaDH;
+       AND (EXISTS (SELECT MaDH,MaSP FROM inserted EXCEPT SELECT MaDH,MaSP FROM deleted)
+         OR EXISTS (SELECT MaDH,MaSP FROM deleted EXCEPT SELECT MaDH,MaSP FROM inserted))
+        THROW 51102, N'Mã đơn/sản phẩm là bất biến. Hãy xóa dòng cũ và thêm dòng mới trong cùng giao dịch.', 1;
+    IF EXISTS (SELECT 1 FROM inserted i JOIN dbo.SanPham sp ON sp.MaSP=i.MaSP WHERE sp.DaXoa=1)
+        THROW 51103, N'Sản phẩm đã ngừng kinh doanh.', 1;
+    DECLARE @Delta TABLE(MaKho INT, MaSP INT, SoLuong BIGINT, PRIMARY KEY(MaKho,MaSP));
+    INSERT @Delta
+    SELECT MaKho,MaSP,SUM(SoLuong) FROM (
+        SELECT dh.MaKhoXuat AS MaKho,i.MaSP,CONVERT(BIGINT,i.SoLuong) AS SoLuong
+        FROM inserted i JOIN dbo.DonHang dh ON dh.MaDH=i.MaDH
+        UNION ALL
+        SELECT dh.MaKhoXuat,d.MaSP,-CONVERT(BIGINT,d.SoLuong)
+        FROM deleted d JOIN dbo.DonHang dh ON dh.MaDH=d.MaDH WHERE dh.TrangThai<>4
+    ) x GROUP BY MaKho,MaSP;
+    IF EXISTS (SELECT 1 FROM @Delta d LEFT JOIN dbo.TonKho tk WITH (UPDLOCK,HOLDLOCK)
+               ON tk.MaKho=d.MaKho AND tk.MaSP=d.MaSP
+               WHERE tk.MaSP IS NULL OR tk.SoLuongTon<d.SoLuong)
+        THROW 51104, N'Kho không có sản phẩm hoặc không đủ số lượng tồn.', 1;
+    UPDATE tk SET SoLuongTon=tk.SoLuongTon-d.SoLuong
+    FROM dbo.TonKho tk JOIN @Delta d ON d.MaKho=tk.MaKho AND d.MaSP=tk.MaSP;
+    UPDATE dh SET TongTien=ISNULL(x.Total,0)
+    FROM dbo.DonHang dh JOIN (SELECT MaDH FROM inserted UNION SELECT MaDH FROM deleted) a ON a.MaDH=dh.MaDH
+    OUTER APPLY (SELECT SUM(ThanhTien) AS Total FROM dbo.ChiTietDonHang ct WHERE ct.MaDH=dh.MaDH) x;
 END;
 GO
-
 PRINT N'Da tao thanh cong TRIGGER 1 (AFTER INSERT, UPDATE, DELETE): trg_ChiTietDonHang_SyncKho_TongTien';
 GO
 
@@ -206,6 +123,28 @@ AFTER UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    -- Completed documents and their financial snapshots are immutable.
+    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON i.MaDH=d.MaDH
+        WHERE d.TrangThai=3 AND (i.TrangThai<>d.TrangThai OR i.TongTien<>d.TongTien OR i.MaKH<>d.MaKH
+          OR i.MaNV<>d.MaNV OR i.MaKhoXuat<>d.MaKhoXuat OR i.NgayDat<>d.NgayDat
+          OR i.TiLeChietKhau<>d.TiLeChietKhau OR i.TiLeVAT<>d.TiLeVAT))
+        THROW 51105, N'Chứng từ đã giao không được thay đổi.', 1;
+    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON i.MaDH=d.MaDH
+        WHERE i.TrangThai<>d.TrangThai AND NOT
+          ((d.TrangThai=0 AND i.TrangThai IN(1,4)) OR (d.TrangThai=1 AND i.TrangThai IN(2,4)) OR (d.TrangThai=2 AND i.TrangThai IN(3,4))))
+        THROW 51106, N'Chuyển trạng thái không hợp lệ.', 1;
+    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON i.MaDH=d.MaDH
+        WHERE (i.MaKH<>d.MaKH OR i.MaKhoXuat<>d.MaKhoXuat OR i.TiLeChietKhau<>d.TiLeChietKhau OR i.TiLeVAT<>d.TiLeVAT)
+          AND EXISTS(SELECT 1 FROM dbo.ChiTietDonHang ct WHERE ct.MaDH=i.MaDH))
+        THROW 51107, N'Không đổi khách, kho hoặc chính sách giá của đơn đã có chi tiết.', 1;
+    -- Exactly one refund on the transition to canceled; deleting its lines does not refund again.
+    UPDATE tk SET SoLuongTon=tk.SoLuongTon+x.Qty
+    FROM dbo.TonKho tk JOIN (
+        SELECT i.MaKhoXuat,ct.MaSP,SUM(ct.SoLuong) AS Qty
+        FROM inserted i JOIN deleted d ON d.MaDH=i.MaDH JOIN dbo.ChiTietDonHang ct ON ct.MaDH=i.MaDH
+        WHERE i.TrangThai=4 AND d.TrangThai<>4 GROUP BY i.MaKhoXuat,ct.MaSP
+    ) x ON x.MaKhoXuat=tk.MaKho AND x.MaSP=tk.MaSP;
 
     -- Chỉ kích hoạt khi cột TrangThai được cập nhật sang 3 (Giao thành công)
     IF UPDATE(TrangThai)

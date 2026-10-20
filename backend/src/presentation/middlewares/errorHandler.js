@@ -1,50 +1,15 @@
 function errorHandler(err, req, res, next) {
-  console.error(`[Error Handler] ${req.method} ${req.url}:`, err.message);
-
-  let userFriendlyMessage = err.message || 'Lỗi hệ thống không xác định.';
-  let statusCode = 400;
-
-  // 1. Ngoại lệ mất kết nối hoặc không tìm thấy máy chủ CSDL
-  if (
-    err.code === 'ECONNREFUSED' || 
-    err.code === 'ETIMEOUT' || 
-    err.code === 'ESOCKET' || 
-    err.message?.includes('Failed to connect') ||
-    err.message?.includes('Connection lost')
-  ) {
-    userFriendlyMessage = 'Ngoại lệ kết nối: Mất kết nối tới máy chủ Microsoft SQL Server (Port 14333). Vui lòng kiểm tra Docker Container hoặc dịch vụ SQL Server!';
-    statusCode = 503;
-  }
-  // 2. Ngoại lệ xác thực tài khoản CSDL thất bại (Login Failed)
-  else if (err.number === 18456 || err.message?.includes('Đăng nhập thất bại') || err.message?.includes('Login failed')) {
-    userFriendlyMessage = 'Xác thực thất bại: Tên đăng nhập hoặc mật khẩu SQL Server không chính xác!';
-    statusCode = 401;
-  }
-  // 3. Ngoại lệ bảo mật phân quyền (Permission Denied - Least Privilege)
-  else if (err.number === 229 || err.message?.includes('permission was denied')) {
-    userFriendlyMessage = `Ngoại lệ bảo mật: Tài khoản CSDL hiện tại bị từ chối quyền thực thi thao tác này (Chính sách Least Privilege)! Chi tiết: ${err.message}`;
-    statusCode = 403;
-  }
-  // 4. Ngoại lệ vi phạm ràng buộc toàn vẹn (CHECK / FOREIGN KEY / UNIQUE Constraint)
-  else if (err.number === 547) {
-    userFriendlyMessage = `Ngoại lệ toàn vẹn dữ liệu: Vi phạm ràng buộc toàn vẹn (CHECK hoặc Khóa ngoại FK). Dữ liệu nhập không hợp lệ!`;
-    statusCode = 422;
-  }
-  else if (err.number === 2627 || err.number === 2601) {
-    userFriendlyMessage = `Ngoại lệ trùng lặp: Vi phạm ràng buộc duy nhất (UNIQUE hoặc Khóa chính PK). Dữ liệu đã tồn tại!`;
-    statusCode = 409;
-  }
-  // 5. Ngoại lệ nghiệp vụ từ Stored Procedure / THROW 50000+
-  else if (err.number >= 50000 || err.message?.includes('Lỗi') || err.message?.includes('không được trùng')) {
-    userFriendlyMessage = err.message;
-    statusCode = 422;
-  }
-
-  return res.status(statusCode).json({
-    success: false,
-    error: userFriendlyMessage,
-    code: err.code || err.number || 'DB_ERROR'
-  });
+  console.error(`[API] ${req.method} ${req.path}:`, err.code || err.number || 'ERROR');
+  let status = err.status || 500;
+  let message = status < 500 ? err.message : 'Lỗi hệ thống. Vui lòng thử lại.';
+  if (err.number === 18456 || err.code === 'ELOGIN') { status = 401; message = 'Tên đăng nhập hoặc mật khẩu không chính xác.'; }
+  else if (err.number === 229) { status = 403; message = 'Bạn không có quyền thực hiện thao tác này.'; }
+  else if ([547, 515, 8115].includes(err.number) || err.code === 'EVALIDATE') { status = 422; message = 'Dữ liệu không hợp lệ hoặc vi phạm ràng buộc.'; }
+  else if ([2601, 2627].includes(err.number)) { status = 409; message = 'Dữ liệu đã tồn tại.'; }
+  else if (err.number === 50404) { status = 404; message = err.message; }
+  else if (err.number >= 50000) { status = 422; message = err.number === 50000 ? 'Giao dịch không hợp lệ.' : err.message; }
+  else if (['ESOCKET', 'ETIMEOUT', 'ECONNREFUSED', 'ECONNCLOSED'].includes(err.code)) { status = 503; message = 'Không thể kết nối CSDL.'; }
+  else if (err.type === 'entity.parse.failed') { status = 400; message = 'JSON không hợp lệ.'; }
+  res.status(status).json({ success: false, error: message });
 }
-
 module.exports = errorHandler;

@@ -115,9 +115,11 @@ RETURN
         kh.HoTen AS TenKhachHang,
         kh.SoDT AS SoDTKhachHang,
         nv.HoTen AS NhanVienLap,
+        nv.HoTen AS TenNhanVien,
         cn.MaCN,
         cn.TenCN AS ChiNhanhBan,
         k.TenKho AS KhoXuat,
+        k.TenKho AS TenKho,
         dh.TrangThai,
         CASE dh.TrangThai
             WHEN 0 THEN N'Mới tạo'
@@ -169,11 +171,11 @@ BEGIN
         nv.HoTen,
         cn.TenCN,
         COUNT(dh.MaDH) AS SoDonHangDaChot,
-        ISNULL(SUM(dh.TongTien), 0) AS TongDoanhSo,
+        ISNULL(SUM(net.TienThuan), 0) AS TongDoanhSo,
         CASE 
-            WHEN ISNULL(SUM(dh.TongTien), 0) >= 20000000 THEN N'Xuất sắc (Vượt KPI)'
-            WHEN ISNULL(SUM(dh.TongTien), 0) >= 5000000 THEN N'Đạt yêu cầu'
-            WHEN ISNULL(SUM(dh.TongTien), 0) > 0 THEN N'Cần cải thiện'
+            WHEN ISNULL(SUM(net.TienThuan), 0) >= 20000000 THEN N'Xuất sắc (Vượt KPI)'
+            WHEN ISNULL(SUM(net.TienThuan), 0) >= 5000000 THEN N'Đạt yêu cầu'
+            WHEN ISNULL(SUM(net.TienThuan), 0) > 0 THEN N'Cần cải thiện'
             ELSE N'Chưa phát sinh doanh số'
         END AS DanhGiaKPI
     FROM NhanVien nv
@@ -181,6 +183,7 @@ BEGIN
     LEFT JOIN DonHang dh ON nv.MaNV = dh.MaNV 
                          AND dh.TrangThai = 3 -- Chỉ tính các đơn giao thành công
                          AND YEAR(dh.NgayDat) = @Nam
+    OUTER APPLY (SELECT SUM(v.TienSauChietKhau) AS TienThuan FROM dbo.v_InHoaDon_ChiTietPhucHop v WHERE v.MaDH=dh.MaDH) net
     WHERE nv.DaXoa = 0
     GROUP BY nv.MaNV, nv.HoTen, cn.TenCN;
 

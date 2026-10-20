@@ -1,46 +1,18 @@
--- =========================================================================
--- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
--- GIẢNG VIÊN HƯỚNG DẪN: TS. PHAN THỊ THỂ
--- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
--- KỊCH BẢN PHỤC HỒI (RESTORE) CSDL TỪ FILE BACKUP (.BAK)
--- NHÓM SINH VIÊN: Lợi (20%), Khởi (20%), Bình (20%), Kiệt (20%), Tân (20%)
--- =========================================================================
-
+-- Destructive operation. Run via `db:restore -- --replace` with an explicit RESTORE_FILE.
 USE master;
-GO
-
--- 1. NGẮT KẾT NỐI VÀ ĐƯA CSDL VỀ CHẾ ĐỘ SINGLE_USER ĐỂ RESTORE KHÔNG BỊ KHÓA
-IF EXISTS (SELECT * FROM sys.databases WHERE name = 'QuanLyBanHangDB')
-BEGIN
-    ALTER DATABASE QuanLyBanHangDB SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-END;
-GO
-
--- 2. TỰ ĐỘNG XÁC ĐỊNH ĐƯỜNG DẪN FILE BACKUP THEO MÔI TRƯỜNG
-DECLARE @BackupPath NVARCHAR(500);
-
-IF @@VERSION LIKE '%Linux%'
-    SET @BackupPath = N'/var/opt/mssql/data/QuanLyBanHangDB.bak';
-ELSE
-    SET @BackupPath = N'C:\Backup\QuanLyBanHangDB.bak';
-
-PRINT N'Dang thuc hien phuc hoi CSDL tu file: ' + @BackupPath;
-
--- 3. THỰC HIỆN RESTORE DATABASE VỚI REPLACE VÀ RECOVERY
-RESTORE DATABASE QuanLyBanHangDB 
-FROM DISK = @BackupPath
-WITH 
-    REPLACE,                            -- Ghi đè CSDL cũ nếu đã tồn tại
-    RECOVERY,                           -- San sang dua CSDL vao su dung ngay
-    STATS = 10;                         -- Hien thi tien do moi 10%
-GO
-
--- 4. TRẢ LẠI CHẾ ĐỘ MULTI_USER CHO CƠ SỞ DỮ LIỆU
-ALTER DATABASE QuanLyBanHangDB SET MULTI_USER;
-GO
-
-PRINT N'=========================================================================';
-PRINT N'DA PHUC HOI THANH CONG CSDL QuanLyBanHangDB TU FILE .BAK!';
-PRINT N'HE THONG DA SAN SANG DE KET NOI VA TEST UNG DUNG!';
-PRINT N'=========================================================================';
-GO
+SET NOCOUNT ON;
+IF ISNULL(TRY_CONVERT(INT,SESSION_CONTEXT(N'AllowDatabaseRestore')),0)<>1
+ THROW 51411,N'Restore cần xác nhận --replace và đường dẫn RESTORE_FILE rõ ràng.',1;
+DECLARE @Db SYSNAME=N'QuanLyBanHangDB',@File NVARCHAR(1200)=N'$(RESTORE_FILE)';
+IF DB_ID(@Db) IS NULL THROW 51412,N'Chỉ phục hồi vào CSDL đã tồn tại và được chọn rõ trong DB_NAME.',1;
+RESTORE VERIFYONLY FROM DISK=@File WITH CHECKSUM;
+BEGIN TRY
+ ALTER DATABASE [QuanLyBanHangDB] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+ RESTORE DATABASE @Db FROM DISK=@File WITH REPLACE,RECOVERY,CHECKSUM;
+ ALTER DATABASE [QuanLyBanHangDB] SET MULTI_USER;
+ SELECT @Db AS RestoredDatabase;
+END TRY
+BEGIN CATCH
+ IF DATABASEPROPERTYEX(@Db,'Status')='ONLINE' ALTER DATABASE [QuanLyBanHangDB] SET MULTI_USER;
+ THROW;
+END CATCH;

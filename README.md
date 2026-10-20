@@ -1,237 +1,110 @@
-# HE THONG QUAN LY BAN HANG VA CHUOI TON KHO DA CHI NHANH
+# Quản lý bán hàng & chuỗi tồn kho đa chi nhánh
 
-TRUONG DAI HOC SU PHAM KY THUAT TP. HO CHI MINH (HCMUTE)  
-KHOA CONG NGHE THONG TIN - BO MON HE THONG THONG TIN  
-HOC PHAN: HE QUAN TRI CO SO DU LIEU (DBMS330284)  
-GIANG VIEN HUONG DAN: TS. PHAN THI THE  
+Đồ án DBMS330284 — FIT, HCMUTE. React 18/Vite, Express và SQL Server; giữ cách gọi T-SQL thuần qua `mssql`.
 
-DANH SACH THANH VIEN THUC HIEN:
-1. Quach Tai Loi (20%)
-2. Phan Thien Khoi (20%)
-3. Huynh Van Banh (20%)
-4. Hoang Gia Kiet (20%)
-5. Tran Nhat Tan (20%)
+## Cài đặt và chạy
 
----
+Dùng Node.js **22.12 trở lên**, npm, SQL Server 2022 Developer hoặc Docker. Image SQL Server 2022 cần máy x86-64 phù hợp; bộ kiểm thử cục bộ cũng đã chạy trên Azure SQL Edge ARM64, nhưng không thay thế việc xác nhận trên SQL Server 2022 của máy nộp bài.
 
-## 1. TONG QUAN DU AN VA KIEN TRUC HE THONG
-
-Du an xay dung he thong quan ly ban hang va chuoi ton kho da chi nhanh, ap dung kien truc da tang (Multi-tier Architecture) voi mo hinh thiet ke Clean Architecture tai Backend ket hop React.js tai Frontend va he quan tri co so du lieu quan he Microsoft SQL Server 2022.
-
-### 1.1. Cac tang kien truc
-
-- Tang Co so du lieu: Microsoft SQL Server 2022 Enterprise/Developer Edition chay tren Docker Container. Trien khai day du cac rang buoc toan ven, 5 Khung nhin (Views va Indexed Views), 5 Ham nguoi dung (Scalar, iTVF, mTVF), 5 Trigger nang cao (kiem soat ton kho, audit log bien dong gia, tich diem VIP, chong gian lan ke toan) va 5 Thu tuc/Giao dich ACID kiem soat dong thoi (Concurrency Control voi khoa UPDLOCK + HOLDLOCK).
-- Tang Backend: Node.js va Express.js trien khai theo Clean Architecture (Domain, Usecases, Infrastructure, Presentation), giao tiep truc tiep qua driver thuan mssql, tich hop co che kiem soat loi tap trung va xac thuc phan quyen Native CSDL.
-- Tang Frontend: React 18, Vite va he thong UI Dashboard duoc thiet ke theo Design System hien dai, phan tach ro rang giua cac man hinh nghiep vu: Dang nhap RBAC, Quan ly san pham, Quan tri to chuc (Chi nhanh, Nhan su, Khach hang), Don hang va hoa don, Tra cuu va bao cao thong ke.
-
----
-
-## 2. BANG MAU THIET KE GIAO DIEN (DESIGN SYSTEM PALETTE)
-
-| Vai tro | Ten mau | Ma HEX | Cach dung thuc te |
-| :--- | :--- | :--- | :--- |
-| Nen chinh (App BG) | Light Cool Gray | #F8FAFC | Nen toan trang, khong de trang tinh de card noi len |
-| Nen Card / Table | Pure White | #FFFFFF | Nen cua bang danh sach chi nhanh, card chi so |
-| Duong vien (Border) | Border Gray | #E2E8F0 | Ke vien bang du lieu, phan tach sidebar |
-| Primary (Chu dao) | Deep Indigo Blue | #2563EB | Nut "Them chi nhanh", tab dang chon, lien ket |
-| Secondary / Sidebar | Slate Dark | #0F172A | Nen Sidebar menu quan tri hoac icon phu |
-| Text chinh | Slate 900 | #0F172A | Tieu de, ten chi nhanh, so lieu KPI |
-| Text phu | Slate 500 | #64748B | Dia chi, ngay tao, ma hoa don, nhan phu |
-
----
-
-## 3. THONG TIN DICH VU VA CONG MANG (PORTS CONFIGURATION)
-
-Do mot so dai cong tren he dieu hanh Windows (nhu 14333 va 3000) nam trong danh sach loai tru cua Hyper-V/WSL (Excluded Port Ranges), he thong da duoc chuan hoa cac cong ket noi nhu sau:
-
-| Dich vu | Cong nghe | Cong (Port) | Dia chi truy cap |
-| :--- | :--- | :---: | :--- |
-| Giao dien Frontend (Dev) | React 18, Vite | 5173 | http://localhost:5173 |
-| May chu Backend & Web Production | Node.js Express | 5000 | http://localhost:5000 |
-| Co so du lieu SQL Server | Docker Container | 11433 | localhost,11433 |
-
----
-
-## 4. YEU CAU MOI TRUONG CAI DAT (PREREQUISITES)
-
-De van hanh toan bo du an, may tinh can cai dat truoc:
-- He dieu hanh: Windows 10/11, Linux (Ubuntu/Debian) hoac macOS.
-- Docker va Docker Desktop: Phien ban 20.10 tro len (ho tro docker compose).
-- Node.js: Phien ban LTS 18.x, 20.x hoac 22.x tro len.
-- Trinh quan ly goi: npm phien ban 9.x tro len.
-- Git: Phien ban 2.x tro len.
-
----
-
-## 5. HUONG DAN KHOI CHAY DU AN (EXECUTION GUIDE)
-
-### Cach 1: Khoi chay nhanh toan bo he thong (Khuyen dung)
-
-He thong da duoc dong goi tap lenh tu dong. Nguoi dung mo PowerShell tai thu muc goc du an (`E:\DBMS`) va thuc thi:
-
-```powershell
-./start.ps1
+```sh
+cp backend/.env.example backend/.env
+npm ci --prefix backend
+npm ci --prefix frontend
 ```
 
-Tap lenh se tu dong:
-1. Khoi dong Container Microsoft SQL Server tren cong 11433.
-2. Khoi dong Backend Express API tren cong 5000.
-3. Khoi dong Frontend React tren cong 5173.
+Điền `DB_PASSWORD` và bốn mật khẩu `DB_ADMIN_PASSWORD`, `DB_MANAGER_PASSWORD`, `DB_CASHIER_PASSWORD`, `DB_STOCK_PASSWORD` trong `backend/.env`. Chọn mật khẩu mạnh và khác nhau; không commit file này. Bốn biến cuối cần khi chạy `db:init`, không cần cho `db:migrate` hoặc chạy web. Login đã tồn tại không bị đổi mật khẩu bởi script bootstrap/migration.
 
----
-
-### Cach 2: Khoi chay tung thanh phan thu cong (Manual Step-by-Step)
-
-#### Buoc 1: Khoi dong Co so du lieu SQL Server
-
-Tu thu muc goc du an, khoi chay Container bang Docker Compose:
-
-```bash
-docker compose up -d
+```sh
+npm run db:up
+# Chỉ với CSDL mới/chưa có bảng:
+npm run db:init
+npm run frontend:build
+npm run backend:start
 ```
 
-Kiem tra trang thai hoat dong cua Container:
+Mở [http://localhost:5000](http://localhost:5000). Express phục vụ đúng bundle vừa build trong `backend/public`. `/health` chạy truy vấn CSDL và trả 503 nếu chưa sẵn sàng. SQL readiness được kiểm tra trước khi mở cổng HTTP. Windows có thể dùng `./start.ps1` **sau lần khởi tạo đầu tiên**; script dừng nếu Docker, migration hoặc build thất bại.
 
-```bash
-docker compose ps
+Để dùng SQL Server đang có, sửa `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`. Cổng mặc định thống nhất là **11433**; backend **5000**, Vite **5173**. Với container cũ ánh xạ 1433, đặt `DB_PORT=1433`, không khởi động thêm container trùng dữ liệu/cổng.
+
+Chế độ phát triển:
+
+```sh
+npm run backend:start
+# Terminal khác:
+npm run frontend:dev
 ```
 
-Container `sqlserver_dbms_cothe` phai o trang thai `Up` va anh xa cong `0.0.0.0:11433->1433/tcp`.
+Frontend gọi `/api` cùng origin qua proxy, không hardcode `localhost:5000` trong bundle. Dev server/Docker chỉ bind loopback theo mặc định. Khi triển khai HTTPS, đặt `COOKIE_SECURE=true` và `APP_ORIGINS` thành origin thực tế. Chỉ mở `HOST=0.0.0.0` khi đã chủ động cấu hình mạng/reverse proxy.
 
-#### Buoc 2: Khoi tao du lieu (Neu Container chay lan dau)
+## Nâng cấp CSDL có dữ liệu
 
-Neu du lieu chua duoc tao trong Container, co the thuc thi script khoi tao toan bo CSDL (bao gom bang, du lieu mau, views, functions, triggers, procedures, roles):
+**Không chạy file 00/01 để cập nhật dữ liệu đang dùng.** Đây là script dựng mới/reset; mặc định từ chối nếu đã có bảng. `node scripts/database.cjs init --reset` là thao tác **xóa dữ liệu**, chỉ dành cho CSDL demo có thể bỏ.
 
-```bash
-docker exec -i sqlserver_dbms_cothe /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "PasswordAdmin@2026" -C -i /database/00_KHOITAO_TOANBO_CSDL_RUN_ALL.sql
+```sh
+npm run db:migrate
 ```
 
-Hoac su dung Azure Data Studio / SQL Server Management Studio (SSMS) ket noi vao `localhost,11433` voi tai khoan `sa` / `PasswordAdmin@2026` va thuc thi file `database/00_KHOITAO_TOANBO_CSDL_RUN_ALL.sql`.
+Lệnh này:
 
-#### Buoc 3: Cai dat va khoi chay Backend API
+1. Tạo full backup `COPY_ONLY, CHECKSUM` tên duy nhất trong thư mục backup của SQL Server và chạy `RESTORE VERIFYONLY`. CLI in đường dẫn trên server; cần copy/lưu backup ra nơi độc lập trước khi triển khai quan trọng.
+2. Chạy toàn bộ migration trong **một transaction**. Không DROP TABLE, DELETE dữ liệu, reset identity hoặc đổi mật khẩu/login. Đơn còn hiệu lực có tổng tiền lệch chi tiết bị từ chối; lỗi ràng buộc khiến rollback. Cần đối soát dữ liệu nguồn trước khi chạy lại.
+3. Cập nhật view, function, trigger, procedure và quyền; ghi `SchemaMigrations`. Có thể chạy lại. Các index được dựng lại nên cần cửa sổ bảo trì để tránh chặn truy vấn lâu.
 
-Di chuyen vao thu muc `backend`:
+Migration chốt tỷ lệ chiết khấu/thuế cho từng đơn. Dữ liệu cũ không lưu hạng khách tại thời điểm mua, nên đơn cũ được chốt theo cách tính cũ **tại thời điểm migration**; không thể khôi phục chính xác chính sách lịch sử đã bị mất. Cần đối soát chứng từ trước triển khai thực tế. Migration không đoán hoặc tự điều chỉnh tồn kho lịch sử đã sai.
 
-```bash
-cd backend
-npm install
-node src/server.js
+Giữ backup để rollback ứng dụng/schema nếu cần. Khôi phục backup phải thực hiện có kế hoạch vì có thể làm mất giao dịch phát sinh sau backup. Có thể tạo backup độc lập bằng `npm run db:backup`. Restore là thao tác ghi đè: chỉ chạy `npm run db:restore -- --replace` khi đã đặt **DB_NAME đích** và **RESTORE_FILE trên máy SQL Server** rõ ràng. Script kiểm tra backup trước và trả CSDL về MULTI_USER nếu lỗi khi nó vẫn ONLINE; nếu SQL Server để DB ở trạng thái RESTORING cần DBA xử lý. Hai script backup/restore không phải migration tự động.
+
+## Xác thực và phân quyền
+
+Đăng nhập bằng SQL login đã cấu hình; mật khẩu chỉ gửi một lần tới backend, được giữ trong bộ nhớ server phục vụ kết nối. Trình duyệt chỉ nhận cookie session ngẫu nhiên **HttpOnly, SameSite=Strict**, không lưu mật khẩu/token trong localStorage. Session hết hạn sau 8 giờ, logout hủy session, khởi động lại backend yêu cầu đăng nhập lại. Store này dành cho một tiến trình; khi chạy nhiều instance cần session store dùng chung và cơ chế quản lý secret phù hợp.
+
+| Login mặc định | Role | Phạm vi |
+|---|---|---|
+| Login_Admin | Role_Admin | Quản trị dữ liệu |
+| Login_QuanLyChiNhanh | Role_QuanLyChiNhanh | Sản phẩm, tổ chức, bán hàng, nhập/chuyển kho, báo cáo; không đọc lương |
+| Login_ThuNgan | Role_ThuNgan | Tra sản phẩm/khách/nhân viên không lương, tạo khách thường, bán hàng và hủy hợp lệ |
+| Login_ThuKho | Role_ThuKho | Xem tồn kho, nhập/chuyển kho; không xem khách và báo cáo tài chính |
+
+Role Quản lý hiện có phạm vi **toàn chuỗi**; chưa có mapping login → chi nhánh hay SQL Server RLS theo từng người. `WITH CHECK OPTION` của view chi nhánh 1 chỉ là ví dụ kiểm soát qua view. Không mô tả nó là RLS đầy đủ.
+
+Các API nghiệp vụ từ chối request chưa đăng nhập; header `X-DB-User/X-DB-Password` cũ không còn được hỗ trợ. Ghi dữ liệu của role hạn chế đi qua procedure; không cấp quyền ghi trực tiếp bảng đơn/chi tiết.
+
+## Nghiệp vụ và báo cáo
+
+- Đơn mới chốt tỷ lệ VIP 10%, Kim Cương 15%, VAT 8%. `TongTien` lưu tiền gốc, chiết khấu/thuế được tính từ snapshot trên từng dòng. Hóa đơn cộng **tất cả** dòng. Tổng thanh toán bằng tổng tiền sau giảm đã làm tròn cộng thuế đã làm tròn từng dòng.
+- Báo cáo doanh thu sản phẩm/chi nhánh/KPI/chi tiêu khách chỉ tính đơn **đã giao**, thống nhất tiền sau chiết khấu, chưa VAT. Báo cáo chi nhánh tách VAT và tổng thực thu.
+- Vòng đời: `0 → 1 → 2 → 3`, hoặc `0/1/2 → 4`. Chứng từ hoàn tất không được sửa. Cả hai đường hủy đều hoàn tồn đúng một lần; xóa chi tiết đơn hủy không hoàn thêm.
+- Khóa MaDH/MaSP của dòng là bất biến. Đổi sản phẩm bằng xóa dòng cũ/thêm dòng mới trong cùng transaction khi đơn còn mở. Kiểm tra tồn và khóa `UPDLOCK/HOLDLOCK` bảo vệ bán đồng thời.
+- **Nhập Kho** trên màn hình báo cáo bổ sung tồn cho hàng mới, có nhật ký. Chuyển kho chỉ di chuyển tồn; hai đường chuyển dùng chung thứ tự khóa kho tăng dần.
+- Không cho quản lý thay thế là chính nhân viên/cấp dưới gây vòng lặp. Nhân viên nghỉ việc hoặc sản phẩm ngừng bán không được lập đơn mới.
+
+## Kiểm thử và sinh tải
+
+```sh
+npm test                       # Unit: hóa đơn nhiều dòng, role, session, validation, SQL đồng bộ
+npm run sql:check               # File SQL tổng và migration đúng nguồn
+npm run test:integration        # Tạo DBMSTest_* và login ngẫu nhiên, kiểm thử rồi dọn
 ```
 
-Backend se khoi dong tai `http://localhost:5000` va hien thi thong bao:
-`Kiem tra ket noi CSDL SQL Server: THANH CONG`.
+Integration dùng thông tin quản trị SQL trong môi trường, nhưng **tự chọn CSDL và login tạm**, không ghi vào CSDL ứng dụng. Kiểm tra auth/RBAC, CRUD có quyền giới hạn, tồn kho/hủy, đồng thời, chứng từ bất biến, migration từ schema cũ, chạy lại, rollback khi dữ liệu không hợp lệ và recovery với đối chiếu dữ liệu. Backup của DB test được giữ trên server để chẩn đoán, cần chính sách dọn định kỳ. Không dùng số lượng assertion làm bằng chứng phủ hết nghiệp vụ.
 
-#### Buoc 4: Cai dat va khoi chay Frontend React
+Các file `test_deep_*.js`, `test_ultra_deep.js` là chẩn đoán lịch sử với assertion cũ, chỉ cho phép chạy khi `RUN_LEGACY_TESTS=true` và DB_NAME là `DBMSTest_*`. Lệnh test chính dùng bộ regression mới. Không chạy test ghi trên CSDL đang demo/nộp bài cần giữ.
 
-Mo mot cua so Terminal moi va di chuyen vao thu muc `frontend`:
+`sp_SinhDuLieuMau_TestTai` chỉ chạy trong `DBMSTest_*` hoặc CSDL có đuôi `_Benchmark`. Nó cấp tồn cho fixture, giữ trigger hoạt động, tạo đơn theo vòng đời hợp lệ. Tối đa 100.000 đơn; đây không phải nghiệp vụ nhập hàng sản xuất. Kết quả Execution Plan phải được đo trên máy/dữ liệu thực tế; số liệu minh họa trong tài liệu không thay thế phép đo.
 
-```bash
-cd frontend
-npm install
-npm run dev
+## Demo recovery an toàn
+
+Chỉ dùng bản CSDL độc lập có đuôi `_RecoveryDemo` (hoặc DBMSTest_*), đã khởi tạo đủ schema/seed và không có kết nối ứng dụng:
+
+```sh
+# Đặt DB_NAME thành tên bản demo độc lập trong môi trường trước khi chạy:
+npm run db:recovery
 ```
 
-Frontend se khoi dong tai `http://localhost:5173`. Mo trinh duyet va truy cap dia chi tren de su dung ung dung.
+Script tự lấy thời điểm an toàn thực tế, áp dụng STOPAT cho các log và đối chiếu số đơn, chi tiết, tổng tiền sau restore. Script từ chối chạy lên CSDL ứng dụng mặc định. Demo có thao tác xóa và restore; không dùng dữ liệu cần giữ.
 
----
+## Chỉnh sửa SQL
 
-## 6. DANH SACH TAI KHOAN DANG NHAP VA PHAN QUYEN CSDL (RBAC MATRIX)
+Sửa file thành phần 01–09 rồi chạy `npm run sql:build`. Công cụ sinh `00_KHOITAO_TOANBO_CSDL_RUN_ALL.sql` và `migrations/20261020_safe_retail.sql` từ cùng nguồn; CI/test kiểm tra sai lệch. Không sửa thủ công hai file sinh tự động.
 
-He thong ap dung nghiem ngat nguyen ly Dac quyen toi thieu (Least Privilege). Nguoi dung co the su dung cac nut chon nhanh (Presets) tai man hinh Dang nhap:
-
-| Tai khoan SQL Login | Mat khau mac dinh | Database Role | Quyen han nghiep vu chi tiet |
-| :--- | :--- | :--- | :--- |
-| Login_Admin | AdminPassword@2026 | Role_Admin | Toan quyen kiem soat co so du lieu (CONTROL DATABASE), quan tri nguoi dung va cau hinh he thong. |
-| Login_QuanLyChiNhanh | ManagerPassword@2026 | Role_QuanLyChiNhanh | Xem bao cao ton kho xep hang, doanh thu chi nhanh, danh gia KPI nhan vien, dieu chuyen kho noi bo va lien chi nhanh. Bi cam xem truc tiep bang luong nhan vien. |
-| Login_ThuNgan | CashierPassword@2026 | Role_ThuNgan | Lap don hang, in hoa don phuc hop, tra cuu thong tin khach hang VIP va tinh chiet khau. Bi cam tuyet doi xoa don hang da giao va xem thong tin luong nhan su. |
-| Login_ThuKho | StockPassword@2026 | Role_ThuKho | Kiem tra ton kho xep hang, thuc hien thu tuc dieu chuyen kho. Bi cam xem thong tin khach hang, don hang va nhan su. |
-| sa | PasswordAdmin@2026 | sysadmin | Tai khoan quan tri goc cua Microsoft SQL Server 2022. |
-
----
-
-## 7. HUONG DAN CHAY BO KIEM THU TU DONG (AUTOMATED TEST SUITES)
-
-He thong tich hop 3 bo kiem thu tu dong chuyen sau, kiem tra toan bo 121 tieu chi toan ven tu muc CSDL den API:
-
-### 7.1. Chay bo kiem thu chuyen sau toan dien (Ultra-Deep Suite - 40 Tests)
-
-Kiem tra 5 Khung nhin, 5 Ham, 5 Trigger, 15 REST API Endpoints, ma tran bao mat 4 Roles va tranh chap dong thoi Concurrency (UPDLOCK + HOLDLOCK):
-
-```bash
-node backend/test_ultra_deep.js
-```
-
-### 7.2. Chay bo kiem thu toan ven rang buoc he thong (Full System Suite - 47 Tests)
-
-Kiem tra 11 bang, khoa chinh, 12 khoa ngoai, cac rang buoc CHECK, UNIQUE va ma loi HTTP phan hoi:
-
-```bash
-node backend/test_deep_full_system.js
-```
-
-### 7.3. Chay bo kiem thu luong nghiep vu ban hang (Business Workflow Suite - 34 Tests)
-
-Kiem tra quy trinh tao don POS, chiem dung ton kho, hoan ton khi huy don, thang hang VIP tu dong va chong ban am:
-
-```bash
-node backend/test_deep_business.js
-```
-
----
-
-## 8. CAU TRUC THU MUC DU AN
-
-```text
-E:\DBMS\
-├── backend\                               # May chu API Node.js Express (Clean Architecture)
-│   ├── public\                            # Ban build production cua Frontend (duoc Express serve tai :5000)
-│   ├── src\
-│   │   ├── core\
-│   │   │   ├── domain\                    # Entities va Interfaces Repository
-│   │   │   └── usecases\                  # Cac nghiep vu Use Cases he thong
-│   │   ├── infrastructure\
-│   │   │   ├── database\                  # Ket noi SqlServerConnectionFactory (Singleton Pool)
-│   │   │   └── repositories\              # Trien khai truy van thuan SQL Server (Raw Driver)
-│   │   └── presentation\
-│   │       ├── controllers\               # Controllers tiep nhan Request va tra ve JSON
-│   │       ├── middlewares\               # Xac thuc Context CSDL va xu ly loi tap trung
-│   │       └── routes\                    # Dinh nghia cac duong dan API
-│   ├── test_ultra_deep.js                 # Bo kiem thu tu dong chuyen sau
-│   ├── test_deep_full_system.js           # Bo kiem thu toan ven he thong
-│   ├── test_deep_business.js              # Bo kiem thu nghiep vu ban hang
-│   ├── package.json
-│   └── .env                               # Bien moi truong ket noi CSDL
-│
-├── database\                              # Tap hop 11 scripts SQL Server kien truc chuan
-│   ├── 00_KHOITAO_TOANBO_CSDL_RUN_ALL.sql # Script khoi tao tong the tat ca doi tuong
-│   ├── 01_TaoCSDL_Bang_RangBuoc.sql       # 11 bang va rang buoc toan ven
-│   ├── 02_DuLieuMau_Testing.sql           # Du lieu kiem thu ban dau va Stored Proc sinh tai
-│   ├── 03_KhungNhin_Views.sql             # 5 Khung nhin (v_BaoCaoTonKho_XepHang, Indexed View...)
-│   ├── 04_Ham_Functions.sql               # 5 Ham UDF, iTVF, mTVF
-│   ├── 05_Trigger_RangBuocNangCao.sql     # 5 Triggers da dong (Multi-row) va Audit Log
-│   ├── 06_ChiMuc_Indexes_Performance.sql  # 5 Nonclustered Indexes toi uu hieu nang
-│   ├── 07_ThuTuc_StoredProcedures.sql     # 5 Thu tuc luu tru xu ly du lieu
-│   ├── 08_GiaoDich_Transactions_Concurrency.sql # 5 Giao dich ACID va kiem soat tranh chap
-│   ├── 09_BaoMat_PhanQuyen_Roles.sql      # 4 Logins, 4 Roles va ma tran Least Privilege
-│   └── 10_KichBan_PhucHoiSuCo_Recovery.sql# Kich ban sao luu va phuc hoi Point-in-time
-│
-├── frontend\                              # Giao dien nguoi dung React.js (Vite)
-│   ├── src\
-│   │   ├── api\                           # apiClient.js ket noi REST API
-│   │   ├── screens\                       # 5 Man hinh chuyen nghiep day du
-│   │   │   ├── LoginScreen.jsx            # Man hinh dang nhap RBAC
-│   │   │   ├── ProductScreen.jsx          # Quan ly san pham & tim kiem nang cao
-│   │   │   ├── OrganizationScreen.jsx     # Chi nhanh, Cay nhan su & Khach hang VIP
-│   │   │   ├── OrderScreen.jsx            # Don hang, In hoa don & Giu cho ton kho
-│   │   │   └── ReportScreen.jsx           # Bao cao ton kho xep hang, Doanh thu, KPI
-│   │   ├── App.jsx                        # Layout Sidebar Slate Dark va Topbar Pure White
-│   │   ├── index.css                      # Bang mau thiet ke chuan do nguoi dung quy dinh
-│   │   └── main.jsx
-│   ├── vite.config.js                     # Cau hinh Proxy va bind host 0.0.0.0
-│   └── package.json
-│
-├── docker-compose.yml                     # Cau hinh khoi dong SQL Server 2022 tren cong 11433
-├── start.ps1                              # Script PowerShell khoi chay 1-click toan bo he thong
-├── package.json                           # Root package.json quan ly lenh chung
-└── README.md                              # Tai lieu huong dan ky thuat du an
-```
+Đợt sửa này không tạo báo cáo học thuật 50–100 trang, slide hay bằng chứng benchmark thay cho nhóm. Cần hoàn thiện các artifact nộp bài riêng theo kế hoạch môn học.

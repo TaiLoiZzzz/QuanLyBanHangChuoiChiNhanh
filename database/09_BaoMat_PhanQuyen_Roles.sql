@@ -12,16 +12,16 @@ GO
 
 -- 1. TẠO 4 SERVER LOGINS NATIVE TRONG SQL SERVER
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = 'Login_Admin')
-    CREATE LOGIN Login_Admin WITH PASSWORD = 'AdminPassword@2026', CHECK_POLICY = OFF;
+    CREATE LOGIN Login_Admin WITH PASSWORD = '$(DB_ADMIN_PASSWORD)', CHECK_POLICY = ON;
 
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = 'Login_QuanLyChiNhanh')
-    CREATE LOGIN Login_QuanLyChiNhanh WITH PASSWORD = 'ManagerPassword@2026', CHECK_POLICY = OFF;
+    CREATE LOGIN Login_QuanLyChiNhanh WITH PASSWORD = '$(DB_MANAGER_PASSWORD)', CHECK_POLICY = ON;
 
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = 'Login_ThuNgan')
-    CREATE LOGIN Login_ThuNgan WITH PASSWORD = 'CashierPassword@2026', CHECK_POLICY = OFF;
+    CREATE LOGIN Login_ThuNgan WITH PASSWORD = '$(DB_CASHIER_PASSWORD)', CHECK_POLICY = ON;
 
 IF NOT EXISTS (SELECT * FROM sys.server_principals WHERE name = 'Login_ThuKho')
-    CREATE LOGIN Login_ThuKho WITH PASSWORD = 'StockPassword@2026', CHECK_POLICY = OFF;
+    CREATE LOGIN Login_ThuKho WITH PASSWORD = '$(DB_STOCK_PASSWORD)', CHECK_POLICY = ON;
 GO
 
 USE QuanLyBanHangDB;
@@ -101,13 +101,16 @@ GRANT SELECT ON TonKho TO Role_QuanLyChiNhanh;
 GRANT SELECT ON SanPham TO Role_QuanLyChiNhanh;
 GRANT SELECT ON DanhMuc TO Role_QuanLyChiNhanh;
 GRANT SELECT, INSERT, UPDATE ON KhachHang TO Role_QuanLyChiNhanh;
-GRANT SELECT, INSERT, UPDATE ON DonHang TO Role_QuanLyChiNhanh;
-GRANT SELECT, INSERT, UPDATE ON ChiTietDonHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON DonHang TO Role_QuanLyChiNhanh;
+REVOKE INSERT, UPDATE ON DonHang FROM Role_QuanLyChiNhanh;
+GRANT SELECT ON ChiTietDonHang TO Role_QuanLyChiNhanh;
+REVOKE INSERT, UPDATE ON ChiTietDonHang FROM Role_QuanLyChiNhanh;
 GRANT SELECT ON NhatKyHeThong TO Role_QuanLyChiNhanh;
 -- BẢO MẬT CẤP CỘT (COLUMN-LEVEL SECURITY - LEAST PRIVILEGE):
 -- Cho phép xem thông tin định danh nhân sự để liên kết chi nhánh/kho, cấm tuyệt đối cột Luong (Error 229 nếu cố truy vấn)
 REVOKE SELECT ON dbo.NhanVien FROM Role_QuanLyChiNhanh;
-GRANT SELECT(MaNV, HoTen, MaCN, MaQL, DaXoa) ON dbo.NhanVien TO Role_QuanLyChiNhanh;
+REVOKE SELECT(MaNV,HoTen,MaCN,MaQL,DaXoa) ON dbo.NhanVien FROM Role_QuanLyChiNhanh;
+DENY SELECT ON dbo.NhanVien TO Role_QuanLyChiNhanh;
 GO
 
 -- ROLE 3: THU NGÂN / CASHIER (HUỲNH VĂN BÌNH - 20%)
@@ -122,7 +125,8 @@ GRANT EXECUTE ON dbo.fn_KiemTraKhaNangDapUngDonHang TO Role_ThuNgan;
 GRANT EXECUTE ON dbo.fn_FormatMaHoaDonTuDong TO Role_ThuNgan;
 GRANT SELECT ON dbo.fn_DanhSachDonHangTheoKhoangThoiGian TO Role_ThuNgan;
 GRANT SELECT ON v_InHoaDon_ChiTietPhucHop TO Role_ThuNgan;
-GRANT SELECT, INSERT, UPDATE ON KhachHang TO Role_ThuNgan;
+GRANT SELECT ON KhachHang TO Role_ThuNgan;
+REVOKE INSERT, UPDATE ON KhachHang FROM Role_ThuNgan;
 GRANT SELECT ON ChiNhanh TO Role_ThuNgan;
 GRANT SELECT ON KhoHang TO Role_ThuNgan;
 GRANT SELECT ON TonKho TO Role_ThuNgan;
@@ -132,7 +136,8 @@ GRANT SELECT ON DonHang TO Role_ThuNgan;
 GRANT SELECT ON ChiTietDonHang TO Role_ThuNgan;
 -- BẢO MẬT: CẤM TUYỆT ĐỐI XEM LƯƠNG HOẶC XÓA BẤT KỲ DỮ LIỆU NÀO TRỰC TIẾP
 REVOKE SELECT ON dbo.NhanVien FROM Role_ThuNgan;
-GRANT SELECT(MaNV, HoTen, MaCN, MaQL, DaXoa) ON dbo.NhanVien TO Role_ThuNgan;
+REVOKE SELECT(MaNV,HoTen,MaCN,MaQL,DaXoa) ON dbo.NhanVien FROM Role_ThuNgan;
+DENY SELECT ON dbo.NhanVien TO Role_ThuNgan;
 DENY DELETE ON DonHang TO Role_ThuNgan;
 DENY DELETE ON ChiTietDonHang TO Role_ThuNgan;
 DENY SELECT ON LichSuGia TO Role_ThuNgan;
@@ -155,7 +160,8 @@ DENY SELECT ON KhachHang TO Role_ThuKho;
 DENY SELECT ON DonHang TO Role_ThuKho;
 DENY SELECT ON ChiTietDonHang TO Role_ThuKho;
 REVOKE SELECT ON dbo.NhanVien FROM Role_ThuKho;
-GRANT SELECT(MaNV, HoTen, MaCN, MaQL, DaXoa) ON dbo.NhanVien TO Role_ThuKho;
+REVOKE SELECT(MaNV,HoTen,MaCN,MaQL,DaXoa) ON dbo.NhanVien FROM Role_ThuKho;
+DENY SELECT ON dbo.NhanVien TO Role_ThuKho;
 GO
 
 -- MA TRẬN BẢO MẬT & KIỂM THỬ XÁC THỰC RLS (TRẦN NHẬT TÂN - 20%)
@@ -164,4 +170,16 @@ GO
 PRINT N'=========================================================================';
 PRINT N'HOAN THANH PHAN QUYEN NATIVE 4 LOGINS, 4 ROLES THEO CHUAN LEAST PRIVILEGE!';
 PRINT N'=========================================================================';
+GO
+
+-- Shared application policy: POS never needs salary, and writes go through transactions.
+GRANT SELECT ON dbo.v_NhanVien_BanHang TO Role_QuanLyChiNhanh,Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_LuuSanPham TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_XoaMemSanPham TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_ThemChiNhanh TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_ThemNhanVien TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_ThemKhachHang TO Role_QuanLyChiNhanh,Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_NhapKho TO Role_QuanLyChiNhanh,Role_ThuKho;
+DENY INSERT,UPDATE,DELETE ON dbo.DonHang TO Role_QuanLyChiNhanh,Role_ThuNgan,Role_ThuKho;
+DENY INSERT,UPDATE,DELETE ON dbo.ChiTietDonHang TO Role_QuanLyChiNhanh,Role_ThuNgan,Role_ThuKho;
 GO

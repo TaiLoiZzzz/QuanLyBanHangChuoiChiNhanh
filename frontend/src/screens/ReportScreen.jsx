@@ -8,16 +8,26 @@ import {
 
 import { getUserRole, canPerformAction, ROLES } from '../utils/permissions';
 
-export default function ReportScreen() {
+export default function ReportScreen({ currentUser }) {
   const [activeTab, setActiveTab] = useState('inventory'); // 'inventory' | 'revenue' | 'kpi' | 'indexed' | 'audit'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const currentUser = JSON.parse(localStorage.getItem('dbms_user') || '{}');
   const userRole = getUserRole(currentUser);
   const canViewFinancials = canPerformAction(userRole, 'VIEW_FINANCIAL_REPORTS');
   const canTransferStock = canPerformAction(userRole, 'TRANSFER_STOCK');
+
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptSaving, setReceiptSaving] = useState(false);
+  const [receipt, setReceipt] = useState({ maKho: '', maSP: '', soLuong: 1 });
+  const receiveStock = async e => {
+    e.preventDefault(); if(receiptSaving) return; setReceiptSaving(true); setError(null);
+    try {
+      await api.receiveStock({ maKho: Number(receipt.maKho), maSP: Number(receipt.maSP), soLuong: Number(receipt.soLuong) });
+      setReceiptOpen(false);setSuccess('Đã nhập kho và ghi nhật ký.');await fetchReports();
+    } catch(err) {setError(err.message);} finally {setReceiptSaving(false);}
+  };
 
   // Data
   const [inventoryReport, setInventoryReport] = useState([]);
@@ -98,7 +108,7 @@ export default function ReportScreen() {
 
   useEffect(() => {
     fetchReports();
-  }, [kpiYear, revYear, revMonth]);
+  }, [kpiYear, revYear, revMonth, activeTab]);
 
   const handleStockTransfer = async (e) => {
     e.preventDefault();
@@ -170,6 +180,7 @@ export default function ReportScreen() {
           <button className="btn btn-secondary" onClick={fetchReports}>
             <RefreshCw size={16} /> Làm mới
           </button>
+          {canTransferStock && <button className="btn btn-secondary" onClick={() => {setError(null);setReceipt({maKho:warehouses[0]?.MaKho || '',maSP:products[0]?.MaSP || '',soLuong:1});setReceiptOpen(true);}}>Nhập Kho</button>}
           {canTransferStock && (
             <button
               className="btn btn-primary"
@@ -519,6 +530,16 @@ export default function ReportScreen() {
           </div>
         )}
       </div>
+
+      {receiptOpen && <div className="modal-overlay"><div className="modal-content">
+        <div className="modal-header"><h3 className="modal-title">Nhập Kho</h3><button className="btn btn-secondary" onClick={()=>setReceiptOpen(false)}>Đóng</button></div>
+        <form onSubmit={receiveStock}><div className="modal-body">
+          {error && <div className="alert alert-danger" role="alert">{error}</div>}
+          <div className="form-group"><label className="form-label" htmlFor="receipt-warehouse">Kho nhận</label><select id="receipt-warehouse" required className="form-select" value={receipt.maKho} onChange={e=>setReceipt({...receipt,maKho:e.target.value})}><option value="">Chọn kho</option>{warehouses.map(w=><option key={w.MaKho} value={w.MaKho}>{w.TenKho}</option>)}</select></div>
+          <div className="form-group"><label className="form-label" htmlFor="receipt-product">Sản phẩm</label><select id="receipt-product" required className="form-select" value={receipt.maSP} onChange={e=>setReceipt({...receipt,maSP:e.target.value})}><option value="">Chọn sản phẩm</option>{products.map(p=><option key={p.MaSP} value={p.MaSP}>{p.TenSP}</option>)}</select></div>
+          <div className="form-group"><label className="form-label" htmlFor="receipt-quantity">Số lượng nhập</label><input id="receipt-quantity" required type="number" min="1" step="1" className="form-input" value={receipt.soLuong} onChange={e=>setReceipt({...receipt,soLuong:e.target.value})}/></div>
+        </div><div className="modal-footer"><button disabled={receiptSaving} type="submit" className="btn btn-primary">{receiptSaving?'Đang lưu…':'Xác Nhận Nhập Kho'}</button></div></form>
+      </div></div>}
 
       {/* Modal Điều Chuyển Kho Hàng (SP 3 & Tx 5) */}
       {isTransferModalOpen && (

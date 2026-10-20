@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { api } from './api/apiClient';
 import LoginScreen from './screens/LoginScreen';
 import ProductScreen from './screens/ProductScreen';
 import OrganizationScreen from './screens/OrganizationScreen';
@@ -12,17 +13,14 @@ import {
 import { getUserRole, canAccessScreen, ROLES } from './utils/permissions';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('dbms_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [currentUser, setCurrentUser] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [dbOnline, setDbOnline] = useState(false);
+  useEffect(() => {
+    localStorage.removeItem('dbms_user'); // Remove credentials saved by older builds.
+    api.getSession().then(setCurrentUser).catch(() => setCurrentUser(null)).finally(() => setCheckingSession(false));
+    fetch('/health', { cache: 'no-store' }).then(r => setDbOnline(r.ok)).catch(() => setDbOnline(false));
+  }, []);
 
   const userRole = getUserRole(currentUser);
 
@@ -42,10 +40,11 @@ export default function App() {
     }
   }, [userRole]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('dbms_user');
+  const handleLogout = async () => {
+    try { await api.logout(); } catch { return; }
     setCurrentUser(null);
   };
+  if (checkingSession) return <div className="content-body">Đang kiểm tra phiên đăng nhập…</div>;
 
   if (!currentUser) {
     return <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />;
@@ -70,7 +69,7 @@ export default function App() {
 
   const getRoleDisplayName = (role) => {
     switch (role) {
-      case ROLES.ADMIN: return 'Quản Trị Hệ Thống (sa)';
+      case ROLES.ADMIN: return 'Quản Trị Hệ Thống';
       case ROLES.MANAGER: return 'Quản Lý Chi Nhánh';
       case ROLES.CASHIER: return 'Thu Ngân (Cashier)';
       case ROLES.STOCK: return 'Thủ Kho (Stockkeeper)';
@@ -210,7 +209,7 @@ export default function App() {
               border: '1px solid #A7F3D0',
               fontWeight: 600
             }}>
-              <CheckCircle2 size={14} /> SQL Server 2022 Online (Port 11433)
+              <CheckCircle2 size={14} /> CSDL: {dbOnline ? 'Sẵn sàng' : 'Chưa sẵn sàng'}
             </div>
           </div>
         </header>

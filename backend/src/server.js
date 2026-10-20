@@ -1,42 +1,15 @@
-require('dotenv').config();
 const app = require('./app');
-const connectionFactory = require('./infrastructure/database/SqlServerConnectionFactory');
-
-const PORT = process.env.PORT || 5000;
-
-const server = app.listen(PORT, async () => {
-  console.log('================================================================');
-  console.log(`Backend Server dang khoi chay tai: http://localhost:${PORT}`);
-  console.log('Kien truc: Clean Architecture (OOP) + Raw SQL Driver mssql');
-  console.log('Ket noi CSDL: SQL Server 2022 (Port 14333) -> QuanLyBanHangDB');
-  console.log('================================================================');
-
-  try {
-    const pool = await connectionFactory.getPool();
-    console.log('Kiem tra ket noi CSDL SQL Server: THANH CONG');
-  } catch (err) {
-    console.error('Kiem tra ket noi CSDL SQL Server: THAT BAI -', err.message);
-  }
-});
-
-// Graceful Shutdown
-process.on('SIGTERM', async () => {
-  console.log('Dang dong server va connection pools...');
-  await connectionFactory.closeAll();
-  server.close(() => process.exit(0));
-});
-
-process.on('SIGINT', async () => {
-  console.log('Dang dong server va connection pools...');
-  await connectionFactory.closeAll();
-  server.close(() => process.exit(0));
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('[Uncaught Exception]:', err.message);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Unhandled Rejection]:', reason);
-});
-
+const factory = require('./infrastructure/database/SqlServerConnectionFactory');
+let server;
+async function shutdown(code=0) {
+  if(server) {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+  await factory.closeAll();process.exitCode=code;
+}
+async function start() {
+  const pool=await factory.getPool();await pool.request().query('SELECT 1 AS ready');
+  const port=Number(process.env.PORT)||5000;
+  server=app.listen(port,process.env.HOST||'127.0.0.1',()=>console.log(`Retail ready: http://${process.env.HOST||'127.0.0.1'}:${port}`));
+  server.on('error',async err=>{console.error('HTTP startup failed:',err.code);await shutdown(1);});
+}
+start().catch(async err=>{console.error('Startup failed. Check backend/.env and database readiness:',err.code||err.message);await shutdown(1);});
+process.on('SIGTERM',()=>shutdown());process.on('SIGINT',()=>shutdown());

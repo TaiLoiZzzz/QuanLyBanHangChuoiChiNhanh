@@ -16,6 +16,12 @@ GO
 USE QuanLyBanHangDB;
 GO
 
+-- Existing data requires an explicit reset session. Use the non-destructive migration for upgrades.
+IF EXISTS(SELECT 1 FROM sys.tables WHERE is_ms_shipped=0)
+   AND ISNULL(TRY_CONVERT(INT,SESSION_CONTEXT(N'AllowDatabaseReset')),0)<>1
+    THROW 51300,N'CSDL đã có dữ liệu. Dùng migration; reset cần AllowDatabaseReset=1.',1;
+GO
+
 -- 2. CẤU HÌNH RECOVERY MODEL = FULL (BẮT BUỘC ĐỂ PHỤC VỤ POINT-IN-TIME RECOVERY)
 ALTER DATABASE QuanLyBanHangDB SET RECOVERY FULL;
 GO
@@ -67,6 +73,7 @@ CREATE TABLE NhanVien (
     Luong DECIMAL(12,2) NOT NULL CONSTRAINT CK_NhanVien_Luong CHECK (Luong > 0),
     MaCN INT NOT NULL CONSTRAINT FK_NhanVien_ChiNhanh REFERENCES ChiNhanh(MaCN),
     MaQL INT NULL CONSTRAINT FK_NhanVien_QuanLy REFERENCES NhanVien(MaNV),
+    CONSTRAINT CK_NhanVien_TuQuanLy CHECK (MaQL <> MaNV),
     DaXoa BIT NOT NULL CONSTRAINT DF_NhanVien_DaXoa DEFAULT 0
 );
 GO
@@ -77,7 +84,7 @@ CREATE TABLE KhachHang (
     HoTen NVARCHAR(100) NOT NULL,
     SoDT CHAR(10) NOT NULL CONSTRAINT UQ_KhachHang_SoDT UNIQUE,
     LoaiKH TINYINT NOT NULL CONSTRAINT DF_KhachHang_LoaiKH DEFAULT 0,
-    DiemTichLuy INT NOT NULL CONSTRAINT DF_KhachHang_Diem DEFAULT 0,
+    DiemTichLuy INT NOT NULL CONSTRAINT DF_KhachHang_Diem DEFAULT 0 CONSTRAINT CK_KhachHang_Diem CHECK (DiemTichLuy >= 0),
     CONSTRAINT CK_KhachHang_SoDT CHECK (LEN(SoDT) = 10 AND SoDT NOT LIKE '%[^0-9]%'),
     CONSTRAINT CK_KhachHang_LoaiKH CHECK (LoaiKH IN (0, 1, 2))
 );
@@ -127,6 +134,10 @@ CREATE TABLE DonHang (
     MaKhoXuat INT NOT NULL CONSTRAINT FK_DonHang_KhoHang REFERENCES KhoHang(MaKho),
     NgayDat DATETIME NOT NULL CONSTRAINT DF_DonHang_NgayDat DEFAULT GETDATE(),
     TrangThai TINYINT NOT NULL CONSTRAINT DF_DonHang_TrangThai DEFAULT 0,
+    TiLeChietKhau DECIMAL(5,4) NOT NULL CONSTRAINT DF_DonHang_ChietKhau DEFAULT 0,
+    TiLeVAT DECIMAL(5,4) NOT NULL CONSTRAINT DF_DonHang_VAT DEFAULT 0.08,
+    CONSTRAINT CK_DonHang_ChietKhau CHECK (TiLeChietKhau BETWEEN 0 AND 1),
+    CONSTRAINT CK_DonHang_VAT CHECK (TiLeVAT BETWEEN 0 AND 1),
     TongTien DECIMAL(14,2) NOT NULL CONSTRAINT DF_DonHang_TongTien DEFAULT 0,
     CONSTRAINT CK_DonHang_TrangThai CHECK (TrangThai IN (0, 1, 2, 3, 4))
 );

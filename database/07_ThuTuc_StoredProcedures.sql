@@ -29,77 +29,37 @@ GO
 -- Nghiệp vụ: Thu ngân tạo đơn hàng mới kèm sản phẩm đầu tiên trong 1 giao dịch
 -- Kỹ thuật: TRY...CATCH, XACT_STATE(), OUTPUT parameter, Transaction an toàn
 -- =========================================================================
-CREATE OR ALTER PROCEDURE dbo.sp_TaoDonHangVaChiTiet
-    @MaKH INT,
-    @MaNV INT,
-    @MaKhoXuat INT,
-    @MaSP INT,
-    @SoLuong INT,
-    @DonGiaBan DECIMAL(12,2),
-    @MaDH_Moi INT = NULL OUTPUT
+CREATE PROCEDURE dbo.sp_TaoDonHangVaChiTiet
+ @MaKH INT, @MaNV INT, @MaKhoXuat INT, @MaSP INT, @SoLuong INT, @DonGiaBan DECIMAL(12,2), @MaDH_Moi INT=NULL OUTPUT
 AS
 BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        IF @SoLuong <= 0
-            THROW 50004, N'Lỗi: Số lượng đặt hàng phải lớn hơn 0!', 1;
-
-        IF @DonGiaBan <= 0
-            THROW 50005, N'Lỗi: Đơn giá bán phải lớn hơn 0 VNĐ!', 1;
-
-        -- 1. Kiểm tra tồn tại của Khách hàng, Nhân viên, Kho
-        IF NOT EXISTS (SELECT 1 FROM KhachHang WHERE MaKH = @MaKH)
-            THROW 50001, N'Lỗi: Khách hàng không tồn tại trong hệ thống!', 1;
-
-        IF NOT EXISTS (SELECT 1 FROM NhanVien WHERE MaNV = @MaNV AND DaXoa = 0)
-            THROW 50002, N'Lỗi: Nhân viên không hợp lệ hoặc đã nghỉ việc!', 1;
-
-        IF NOT EXISTS (SELECT 1 FROM KhoHang WHERE MaKho = @MaKhoXuat)
-            THROW 50003, N'Lỗi: Kho xuất hàng không tồn tại!', 1;
-
-        -- 2. Khóa dòng dữ liệu tồn kho bằng UPDLOCK + HOLDLOCK chống Lost Update / Concurrency Race Condition
-        -- Đảm bảo nếu kho còn 1 thì chỉ duy nhất 1 phiên được mua, phiên thứ 2 bắt buộc phải chờ
-        DECLARE @TonKhoHienTai INT;
-        SELECT @TonKhoHienTai = SoLuongTon
-        FROM TonKho WITH (UPDLOCK, HOLDLOCK)
-        WHERE MaKho = @MaKhoXuat AND MaSP = @MaSP;
-
-        IF @TonKhoHienTai IS NULL OR @TonKhoHienTai < @SoLuong
-            THROW 50006, N'Lỗi giao dịch: Không đủ số lượng tồn kho để đáp ứng đơn hàng!', 1;
-
-        -- 3. Tạo đơn hàng mới với Tổng tiền tính toán trực tiếp (không để mặc định bằng 0)
-        DECLARE @TongTienBanDau DECIMAL(14,2) = @SoLuong * @DonGiaBan;
-
-        INSERT INTO DonHang (MaKH, MaNV, MaKhoXuat, NgayDat, TrangThai, TongTien)
-        VALUES (@MaKH, @MaNV, @MaKhoXuat, GETDATE(), 0, @TongTienBanDau);
-
-        SET @MaDH_Moi = SCOPE_IDENTITY();
-
-        -- 4. Tạo chi tiết đơn hàng (Trigger 1 sẽ tự động kiểm tra và đồng bộ lại)
-        INSERT INTO ChiTietDonHang (MaDH, MaSP, SoLuong, DonGiaBan)
-        VALUES (@MaDH_Moi, @MaSP, @SoLuong, @DonGiaBan);
-
-        COMMIT TRANSACTION;
-        SELECT @MaDH_Moi AS MaDH;
-        RETURN 0; -- Thành công mã lỗi 0
-    END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0
-            ROLLBACK TRANSACTION;
-
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        DECLARE @ErrorSeverity INT = ERROR_SEVERITY();
-        DECLARE @ErrorState INT = ERROR_STATE();
-        RAISERROR(@ErrorMessage, @ErrorSeverity, @ErrorState);
-        RETURN 1; -- Thất bại mã lỗi 1
-    END CATCH;
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF @SoLuong IS NULL OR @SoLuong<=0 OR @DonGiaBan IS NULL OR @DonGiaBan<=0
+    THROW 51201,N'Số lượng và đơn giá phải dương.',1;
+  DECLARE @Discount DECIMAL(5,4);
+  SELECT @Discount=CASE LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END FROM dbo.KhachHang WITH(HOLDLOCK) WHERE MaKH=@MaKH;
+  IF @Discount IS NULL THROW 51202,N'Khách hàng không tồn tại.',1;
+  IF NOT EXISTS(SELECT 1 FROM dbo.NhanVien WITH(HOLDLOCK) WHERE MaNV=@MaNV AND DaXoa=0)
+    THROW 51203,N'Nhân viên không tồn tại hoặc đã nghỉ việc.',1;
+  IF NOT EXISTS(SELECT 1 FROM dbo.SanPham WITH(HOLDLOCK) WHERE MaSP=@MaSP AND DaXoa=0)
+    THROW 51204,N'Sản phẩm không tồn tại hoặc đã ngừng bán.',1;
+  DECLARE @Stock INT;
+  SELECT @Stock=SoLuongTon FROM dbo.TonKho WITH(UPDLOCK,HOLDLOCK) WHERE MaKho=@MaKhoXuat AND MaSP=@MaSP;
+  IF @Stock IS NULL OR @Stock<@SoLuong THROW 51205,N'Kho không đủ số lượng tồn.',1;
+  INSERT dbo.DonHang(MaKH,MaNV,MaKhoXuat,TiLeChietKhau,TiLeVAT)
+  VALUES(@MaKH,@MaNV,@MaKhoXuat,@Discount,0.08);
+  SET @MaDH_Moi=SCOPE_IDENTITY();
+  INSERT dbo.ChiTietDonHang(MaDH,MaSP,SoLuong,DonGiaBan) VALUES(@MaDH_Moi,@MaSP,@SoLuong,@DonGiaBan);
+  COMMIT; SELECT @MaDH_Moi AS MaDH; RETURN 0;
+ END TRY
+ BEGIN CATCH
+  IF XACT_STATE()<>0 ROLLBACK;
+  THROW;
+ END CATCH;
 END;
 GO
-
 PRINT N'Da tao thanh cong PROCEDURE 1: dbo.sp_TaoDonHangVaChiTiet';
 GO
 
@@ -109,43 +69,19 @@ GO
 -- Nghiệp vụ: Chuyển trạng thái đơn (0: Mới -> 1: Xác nhận -> 2: Đang giao -> 3: Giao thành công / 4: Hủy)
 -- Kỹ thuật: Kiểm tra luật chuyển đổi trạng thái hợp lệ, TRY...CATCH
 -- =========================================================================
-CREATE PROCEDURE dbo.sp_CapNhatTrangThaiDonHang
-    @MaDH INT,
-    @TrangThaiMoi TINYINT
-AS
+CREATE PROCEDURE dbo.sp_CapNhatTrangThaiDonHang @MaDH INT,@TrangThaiMoi TINYINT AS
 BEGIN
-    SET NOCOUNT ON;
-
-    BEGIN TRY
-        IF NOT EXISTS (SELECT 1 FROM DonHang WHERE MaDH = @MaDH)
-            THROW 50004, N'Lỗi: Đơn hàng không tồn tại!', 1;
-
-        DECLARE @TrangThaiHienTai TINYINT;
-        SELECT @TrangThaiHienTai = TrangThai FROM DonHang WHERE MaDH = @MaDH;
-
-        -- Quy tắc vòng đời: Không được thay đổi đơn đã giao thành công (3) hoặc đã hủy (4)
-        IF @TrangThaiHienTai = 3
-            THROW 50005, N'Lỗi nghiệp vụ: Đơn hàng đã giao thành công, không thể thay đổi trạng thái!', 1;
-
-        IF @TrangThaiHienTai = 4
-            THROW 50006, N'Lỗi nghiệp vụ: Đơn hàng đã bị hủy, không thể kích hoạt lại!', 1;
-
-        -- Cập nhật trạng thái mới (Trigger 3 sẽ tự động cộng điểm nếu chuyển sang 3)
-        UPDATE DonHang
-        SET TrangThai = @TrangThaiMoi
-        WHERE MaDH = @MaDH;
-
-        SELECT N'Cập nhật trạng thái đơn hàng thành công!' AS ThongBao, @MaDH AS MaDH, @TrangThaiMoi AS TrangThaiMoi;
-        RETURN 0;
-    END TRY
-    BEGIN CATCH
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-        RETURN 1;
-    END CATCH;
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF NOT EXISTS(SELECT 1 FROM dbo.DonHang WITH(UPDLOCK,HOLDLOCK) WHERE MaDH=@MaDH)
+    THROW 50404,N'Đơn hàng không tồn tại.',1;
+  IF @TrangThaiMoi IS NULL OR @TrangThaiMoi NOT IN(0,1,2,3,4) THROW 51206,N'Trạng thái không hợp lệ.',1;
+  UPDATE dbo.DonHang SET TrangThai=@TrangThaiMoi WHERE MaDH=@MaDH;
+  COMMIT; SELECT N'Cập nhật trạng thái đơn hàng thành công!' AS ThongBao,@MaDH AS MaDH,@TrangThaiMoi AS TrangThaiMoi;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
 END;
 GO
-
 PRINT N'Da tao thanh cong PROCEDURE 2: dbo.sp_CapNhatTrangThaiDonHang';
 GO
 
@@ -155,76 +91,19 @@ GO
 -- Nghiệp vụ: Chuyển N sản phẩm từ Kho A sang Kho B của chuỗi
 -- Kỹ thuật: UPDLOCK trên kho xuất để chống Race Condition, Transaction kiểm soát ACID
 -- =========================================================================
-CREATE PROCEDURE dbo.sp_ChuyenKhoNoiBo
-    @MaKhoXuat INT,
-    @MaKhoNhap INT,
-    @MaSP INT,
-    @SoLuongChuyen INT,
-    @MaNVThucHien INT
-AS
+CREATE PROCEDURE dbo.sp_ChuyenKhoNoiBo @MaKhoXuat INT,@MaKhoNhap INT,@MaSP INT,@SoLuongChuyen INT,@MaNVThucHien INT AS
 BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    BEGIN TRY
-        IF @MaKhoXuat = @MaKhoNhap
-            THROW 50007, N'Lỗi: Kho xuất và Kho nhập không được trùng nhau!', 1;
-
-        IF @SoLuongChuyen <= 0
-            THROW 50008, N'Lỗi: Số lượng chuyển phải lớn hơn 0!', 1;
-
-        BEGIN TRANSACTION;
-
-        -- Khóa dòng dữ liệu tại kho xuất bằng UPDLOCK để tránh 2 giao dịch cùng trừ kho đồng thời
-        DECLARE @TonKhoXuat INT;
-        SELECT @TonKhoXuat = SoLuongTon
-        FROM TonKho WITH (UPDLOCK, ROWLOCK)
-        WHERE MaKho = @MaKhoXuat AND MaSP = @MaSP;
-
-        IF @TonKhoXuat IS NULL OR @TonKhoXuat < @SoLuongChuyen
-            THROW 50009, N'Lỗi: Kho xuất không đủ số lượng tồn để thực hiện điều chuyển!', 1;
-
-        -- Trừ hàng tại kho xuất
-        UPDATE TonKho
-        SET SoLuongTon = SoLuongTon - @SoLuongChuyen
-        WHERE MaKho = @MaKhoXuat AND MaSP = @MaSP;
-
-        -- Cộng hàng tại kho nhập (nếu kho nhập chưa từng có món này thì INSERT, có rồi thì UPDATE)
-        IF EXISTS (SELECT 1 FROM TonKho WHERE MaKho = @MaKhoNhap AND MaSP = @MaSP)
-        BEGIN
-            UPDATE TonKho
-            SET SoLuongTon = SoLuongTon + @SoLuongChuyen
-            WHERE MaKho = @MaKhoNhap AND MaSP = @MaSP;
-        END
-        ELSE
-        BEGIN
-            INSERT INTO TonKho (MaKho, MaSP, SoLuongTon)
-            VALUES (@MaKhoNhap, @MaSP, @SoLuongChuyen);
-        END;
-
-        -- Ghi log hành động vào NhatKyHeThong
-        INSERT INTO NhatKyHeThong (HanhDong, NoiDung, ThoiGian, NguoiThucHien)
-        VALUES (
-            N'CHUYEN_KHO_NOI_BO',
-            N'Chuyển ' + CAST(@SoLuongChuyen AS NVARCHAR(10)) + N' món SP ' + CAST(@MaSP AS NVARCHAR(10)) + 
-            N' từ Kho ' + CAST(@MaKhoXuat AS NVARCHAR(10)) + N' sang Kho ' + CAST(@MaKhoNhap AS NVARCHAR(10)),
-            GETDATE(),
-            N'NV_' + CAST(@MaNVThucHien AS NVARCHAR(10))
-        );
-
-        COMMIT TRANSACTION;
-
-        SELECT N'Điều chuyển kho thành công!' AS ThongBao, @MaKhoXuat AS KhoXuat, @MaKhoNhap AS KhoNhap, @SoLuongChuyen AS SoLuong;
-        RETURN 0;
-    END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0
-            ROLLBACK TRANSACTION;
-
-        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@ErrorMessage, 16, 1);
-        RETURN 1;
-    END CATCH;
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF NOT EXISTS(SELECT 1 FROM dbo.NhanVien WHERE MaNV=@MaNVThucHien AND DaXoa=0)
+    THROW 51218,N'Nhân viên thực hiện không hợp lệ.',1;
+  -- Both transfer entry points acquire warehouse locks in the same ascending order.
+  EXEC dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh @MaKhoXuat,@MaKhoNhap,@MaSP,@SoLuongChuyen;
+  INSERT dbo.NhatKyHeThong(HanhDong,NoiDung,NguoiThucHien)
+    VALUES(N'CHUYEN_KHO_NOI_BO',CONCAT(N'NV ',@MaNVThucHien,N', Kho ',@MaKhoXuat,N' -> ',@MaKhoNhap,N', SP ',@MaSP,N', SL ',@SoLuongChuyen),SUSER_SNAME());
+  COMMIT;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
 END;
 GO
 
@@ -297,9 +176,9 @@ BEGIN
             cn.TenCN,
             COUNT(DISTINCT dh.MaDH) AS TongSoDonHang,
             ISNULL(SUM(ct.SoLuong), 0) AS TongSoLuongSanPhamBan,
-            ISNULL(SUM(ct.ThanhTien), 0) AS DoanhThuBanHang,
-            ISNULL(SUM(ct.ThanhTien * 0.08), 0) AS TienThueVATThuDuoc,
-            ISNULL(SUM(ct.ThanhTien * 1.08), 0) AS TongThuThucTe
+            ISNULL(SUM(ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau),0)), 0) AS DoanhThuBanHang,
+            ISNULL(SUM(ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau)*dh.TiLeVAT,0)), 0) AS TienThueVATThuDuoc,
+            ISNULL(SUM(ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau),0)+ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau)*dh.TiLeVAT,0)), 0) AS TongThuThucTe
         FROM ChiNhanh cn
         LEFT JOIN KhoHang k ON cn.MaCN = k.MaCN
         LEFT JOIN DonHang dh ON k.MaKho = dh.MaKhoXuat 
@@ -325,4 +204,85 @@ GO
 PRINT N'=========================================================================';
 PRINT N'HOAN THANH TOAN BO 5 STORED PROCEDURES CO TRY...CATCH CHUAN CUA CO THE!';
 PRINT N'=========================================================================';
+GO
+
+-- Application writes use ownership chaining; roles do not need direct table UPDATE.
+CREATE OR ALTER PROCEDURE dbo.usp_LuuSanPham
+ @MaSP INT=NULL OUTPUT,@TenSP NVARCHAR(150),@MaDM INT,@GiaBanHienTai DECIMAL(12,2),@DonViTinh NVARCHAR(20)
+AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF NULLIF(LTRIM(RTRIM(@TenSP)),N'') IS NULL OR NULLIF(LTRIM(RTRIM(@DonViTinh)),N'') IS NULL OR @GiaBanHienTai<=0
+   THROW 51210,N'Thông tin sản phẩm không hợp lệ.',1;
+  IF @MaSP IS NULL
+  BEGIN
+   INSERT dbo.SanPham(TenSP,MaDM,GiaBanHienTai,DonViTinh) VALUES(@TenSP,@MaDM,@GiaBanHienTai,@DonViTinh);
+   SET @MaSP=SCOPE_IDENTITY();
+   INSERT dbo.TonKho(MaKho,MaSP,SoLuongTon) SELECT MaKho,@MaSP,0 FROM dbo.KhoHang;
+  END
+  ELSE
+  BEGIN
+   UPDATE dbo.SanPham SET TenSP=@TenSP,MaDM=@MaDM,GiaBanHienTai=@GiaBanHienTai,DonViTinh=@DonViTinh WHERE MaSP=@MaSP AND DaXoa=0;
+   IF @@ROWCOUNT=0 THROW 50404,N'Sản phẩm không tồn tại.',1;
+  END;
+  COMMIT;
+  SELECT @MaSP AS MaSP,@TenSP AS TenSP,@MaDM AS MaDM,@GiaBanHienTai AS GiaBanHienTai,@DonViTinh AS DonViTinh;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_XoaMemSanPham @MaSP INT AS
+BEGIN
+ SET NOCOUNT ON;
+ UPDATE dbo.SanPham SET DaXoa=1 WHERE MaSP=@MaSP AND DaXoa=0;
+ IF @@ROWCOUNT=0 THROW 50404,N'Sản phẩm không tồn tại.',1;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_ThemChiNhanh @TenCN NVARCHAR(100),@DiaChi NVARCHAR(200)=NULL,@SoDT CHAR(10) AS
+BEGIN
+ SET NOCOUNT ON;
+ IF NULLIF(LTRIM(RTRIM(@TenCN)),N'') IS NULL OR @SoDT LIKE '%[^0-9]%' OR LEN(@SoDT)<>10
+  THROW 51211,N'Thông tin chi nhánh không hợp lệ.',1;
+ INSERT dbo.ChiNhanh(TenCN,DiaChi,SoDT) VALUES(@TenCN,@DiaChi,@SoDT);
+ SELECT CONVERT(INT,SCOPE_IDENTITY()) AS MaCN,@TenCN AS TenCN,@DiaChi AS DiaChi,@SoDT AS SoDT;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_ThemNhanVien @HoTen NVARCHAR(100),@Luong DECIMAL(12,2),@MaCN INT,@MaQL INT=NULL AS
+BEGIN
+ SET NOCOUNT ON;
+ IF NULLIF(LTRIM(RTRIM(@HoTen)),N'') IS NULL OR @Luong<=0 THROW 51212,N'Thông tin nhân viên không hợp lệ.',1;
+ IF @MaQL IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.NhanVien WHERE MaNV=@MaQL AND DaXoa=0)
+  THROW 51213,N'Quản lý không còn làm việc.',1;
+ INSERT dbo.NhanVien(HoTen,Luong,MaCN,MaQL) VALUES(@HoTen,@Luong,@MaCN,@MaQL);
+ SELECT CONVERT(INT,SCOPE_IDENTITY()) AS MaNV,@HoTen AS HoTen,@MaCN AS MaCN,@MaQL AS MaQL;
+END;
+GO
+-- Stock receipts are explicit, audited transactions; transfers never manufacture inventory.
+CREATE OR ALTER PROCEDURE dbo.usp_NhapKho @MaKho INT,@MaSP INT,@SoLuong INT AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF @SoLuong IS NULL OR @SoLuong<=0 THROW 51214,N'Số lượng nhập phải dương.',1;
+  IF NOT EXISTS(SELECT 1 FROM dbo.SanPham WITH(HOLDLOCK) WHERE MaSP=@MaSP AND DaXoa=0) THROW 51215,N'Sản phẩm không còn kinh doanh.',1;
+  IF EXISTS(SELECT 1 FROM dbo.TonKho WITH(UPDLOCK,HOLDLOCK) WHERE MaKho=@MaKho AND MaSP=@MaSP)
+   UPDATE dbo.TonKho SET SoLuongTon=SoLuongTon+@SoLuong WHERE MaKho=@MaKho AND MaSP=@MaSP;
+  ELSE INSERT dbo.TonKho(MaKho,MaSP,SoLuongTon) VALUES(@MaKho,@MaSP,@SoLuong);
+  INSERT dbo.NhatKyHeThong(HanhDong,NoiDung,NguoiThucHien) VALUES(N'NHAP_KHO',CONCAT(N'Kho ',@MaKho,N', SP ',@MaSP,N', SL ',@SoLuong),SUSER_SNAME());
+  COMMIT; SELECT @MaKho AS MaKho,@MaSP AS MaSP,@SoLuong AS SoLuongNhap;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_ThemKhachHang
+ @HoTen NVARCHAR(100),@SoDT CHAR(10),@LoaiKH TINYINT=0,@DiemTichLuy INT=0 AS
+BEGIN
+ SET NOCOUNT ON;
+ IF NULLIF(LTRIM(RTRIM(@HoTen)),N'') IS NULL OR @DiemTichLuy<0 OR @LoaiKH NOT IN(0,1,2)
+   OR LEN(@SoDT)<>10 OR @SoDT LIKE '%[^0-9]%' THROW 51216,N'Thông tin khách hàng không hợp lệ.',1;
+ IF IS_MEMBER('Role_ThuNgan')=1 AND (@LoaiKH<>0 OR @DiemTichLuy<>0)
+   THROW 51217,N'Thu ngân chỉ được tạo khách thường với điểm ban đầu bằng 0.',1;
+ INSERT dbo.KhachHang(HoTen,SoDT,LoaiKH,DiemTichLuy) VALUES(@HoTen,@SoDT,@LoaiKH,@DiemTichLuy);
+ SELECT CONVERT(INT,SCOPE_IDENTITY()) AS MaKH,@HoTen AS HoTen,@SoDT AS SoDT,@LoaiKH AS LoaiKH,@DiemTichLuy AS DiemTichLuy;
+END;
 GO

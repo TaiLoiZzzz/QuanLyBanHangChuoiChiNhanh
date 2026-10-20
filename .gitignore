@@ -3,3 +3,11 @@ node_modules/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+# Local review artifacts and server backups are not application source.
+audit-*/
+BAO_CAO_RA_SOAT*.md
+*.bak
+*.trn
+frontend/dist/
+.env.*
+!.env.example

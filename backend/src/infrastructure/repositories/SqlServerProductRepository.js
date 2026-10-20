@@ -30,7 +30,7 @@ class SqlServerProductRepository extends IProductRepository {
     request.input('GiaMax', sql.Decimal(12, 2), giaMax ? Number(giaMax) : null);
 
     const result = await request.execute('dbo.sp_TimKiemSanPhamNangCao');
-    return result.recordset;
+    return result.recordset.map(p => ({ ...p, TongTonKho: p.TongTonKhoToanHeThong }));
   }
 
   async createProduct({ tenSP, maDM, giaBanHienTai, donViTinh }, userContext) {
@@ -41,24 +41,9 @@ class SqlServerProductRepository extends IProductRepository {
     request.input('GiaBanHienTai', sql.Decimal(12, 2), giaBanHienTai);
     request.input('DonViTinh', sql.NVarChar(20), donViTinh);
 
-    const query = `
-      INSERT INTO SanPham (TenSP, MaDM, GiaBanHienTai, DonViTinh, DaXoa)
-      VALUES (@TenSP, @MaDM, @GiaBanHienTai, @DonViTinh, 0);
-      SELECT SCOPE_IDENTITY() AS MaSP, @TenSP AS TenSP, @MaDM AS MaDM, @GiaBanHienTai AS GiaBanHienTai, @DonViTinh AS DonViTinh;
-    `;
-    const result = await request.query(query);
-    const newSp = result.recordset[0];
-
-    // Tạo sẵn tồn kho 0 cho các kho hàng hiện có
-    const initStockQuery = `
-      INSERT INTO TonKho (MaKho, MaSP, SoLuongTon)
-      SELECT MaKho, @MaSP, 0 FROM KhoHang;
-    `;
-    const stockRequest = pool.request();
-    stockRequest.input('MaSP', sql.Int, newSp.MaSP);
-    await stockRequest.query(initStockQuery);
-
-    return newSp;
+    request.output('MaSP', sql.Int);
+    const result = await request.execute('dbo.usp_LuuSanPham');
+    return result.recordset[0];
   }
 
   async updateProduct(id, { tenSP, maDM, giaBanHienTai, donViTinh }, userContext) {
@@ -70,13 +55,8 @@ class SqlServerProductRepository extends IProductRepository {
     request.input('GiaBanHienTai', sql.Decimal(12, 2), giaBanHienTai);
     request.input('DonViTinh', sql.NVarChar(20), donViTinh);
 
-    const query = `
-      UPDATE SanPham
-      SET TenSP = @TenSP, MaDM = @MaDM, GiaBanHienTai = @GiaBanHienTai, DonViTinh = @DonViTinh
-      WHERE MaSP = @MaSP AND DaXoa = 0;
-      SELECT @MaSP AS MaSP, @TenSP AS TenSP, @MaDM AS MaDM, @GiaBanHienTai AS GiaBanHienTai, @DonViTinh AS DonViTinh;
-    `;
-    const result = await request.query(query);
+    // The same stored procedure owns create/update and atomic stock initialization.
+    const result = await request.execute('dbo.usp_LuuSanPham');
     return result.recordset[0];
   }
 
@@ -85,12 +65,7 @@ class SqlServerProductRepository extends IProductRepository {
     const request = pool.request();
     request.input('MaSP', sql.Int, id);
 
-    const query = `
-      UPDATE SanPham
-      SET DaXoa = 1
-      WHERE MaSP = @MaSP;
-    `;
-    await request.query(query);
+    await request.execute('dbo.usp_XoaMemSanPham');
     return { success: true, message: 'Đã xóa mềm sản phẩm thành công!' };
   }
 }

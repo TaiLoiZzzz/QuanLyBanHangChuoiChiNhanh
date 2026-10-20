@@ -14,24 +14,8 @@ export const ROLES = {
 };
 
 export function getUserRole(currentUser) {
-  if (!currentUser) return ROLES.GUEST;
-  const username = (currentUser.username || '').toLowerCase();
-  const roleName = (currentUser.role || '').toLowerCase();
-
-  if (username === 'sa' || roleName === 'sysadmin' || roleName.includes('role_admin') || username.includes('admin')) {
-    return ROLES.ADMIN;
-  }
-  if (username.includes('quanly') || roleName.includes('quanly') || roleName.includes('manager')) {
-    return ROLES.MANAGER;
-  }
-  if (username.includes('thungan') || roleName.includes('thungan') || roleName.includes('cashier')) {
-    return ROLES.CASHIER;
-  }
-  if (username.includes('thukho') || roleName.includes('thukho') || roleName.includes('stock')) {
-    return ROLES.STOCK;
-  }
-
-  return ROLES.GUEST;
+  return ({ Role_Admin: ROLES.ADMIN, sysadmin: ROLES.ADMIN, Role_QuanLyChiNhanh: ROLES.MANAGER,
+    Role_ThuNgan: ROLES.CASHIER, Role_ThuKho: ROLES.STOCK })[currentUser?.role] || ROLES.GUEST;
 }
 
 /**
@@ -41,7 +25,7 @@ export function canAccessScreen(role, screenId) {
   switch (screenId) {
     case 'products':
       // Tất cả vai trò đều được xem và tra cứu danh mục sản phẩm / giá bán / tồn kho
-      return true;
+      return role !== ROLES.GUEST;
 
     case 'orders':
       // Thu ngân (chính), Quản lý, Admin.
@@ -51,7 +35,7 @@ export function canAccessScreen(role, screenId) {
     case 'organization':
       // Quản lý và Admin được xem cơ cấu chi nhánh, khách hàng và phân cấp nhân sự.
       // Thu ngân và Thủ kho BỊ CẤM (DENY SELECT ON NhanVien)
-      return role === ROLES.ADMIN || role === ROLES.MANAGER;
+      return role === ROLES.ADMIN || role === ROLES.MANAGER || role === ROLES.CASHIER;
 
     case 'reports':
       // Admin, Quản lý (xem toàn bộ báo cáo, KPI, doanh thu)

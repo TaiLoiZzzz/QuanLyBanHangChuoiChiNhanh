@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",
-    "build": "vite build",
+    "build": "vite build --outDir ../backend/public --emptyOutDir",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -15,7 +15,10 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.14"
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.4"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

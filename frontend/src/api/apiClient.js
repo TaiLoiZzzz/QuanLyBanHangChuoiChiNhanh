@@ -1,29 +1,7 @@
 // API Client kết nối với Backend Express (Port 5000)
 
-const BASE_URL = typeof window !== 'undefined' && (window.location.port === '5173' || window.location.port === '3000')
-  ? 'http://localhost:5000/api'
-  : '/api';
-
-export function getAuthHeaders() {
-  const savedUser = localStorage.getItem('dbms_user');
-  if (savedUser) {
-    try {
-      const parsed = JSON.parse(savedUser);
-      if (parsed.username && parsed.password) {
-        return {
-          'x-db-user': parsed.username,
-          'x-db-password': parsed.password,
-          'Content-Type': 'application/json'
-        };
-      }
-    } catch (e) {
-      console.error('Error parsing stored user auth', e);
-    }
-  }
-  return {
-    'Content-Type': 'application/json'
-  };
-}
+const BASE_URL = '/api';
+export function getAuthHeaders() { return { 'Content-Type': 'application/json' }; }
 
 async function parseResponse(res) {
   const contentType = res.headers.get('content-type') || '';
@@ -47,6 +25,10 @@ async function parseResponse(res) {
 }
 
 export const api = {
+  receiveStock: async data => parseResponse(await fetch(`${BASE_URL}/inventory/receipts`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data) })),
+  // Cookie is HttpOnly; SQL credentials are never persisted in the browser.
+  getSession: async () => parseResponse(await fetch(`${BASE_URL}/auth/me`, { cache: 'no-store' })),
+  logout: async () => parseResponse(await fetch(`${BASE_URL}/auth/logout`, { method: 'POST', headers: getAuthHeaders(), body: '{}' })),
   // Auth
   login: async (username, password) => {
     const res = await fetch(`${BASE_URL}/auth/login`, {

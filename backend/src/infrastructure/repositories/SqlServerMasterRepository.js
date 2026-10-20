@@ -13,7 +13,7 @@ class SqlServerMasterRepository {
                COUNT(DISTINCT nv.MaNV) AS SoNhanVien
         FROM ChiNhanh cn
         LEFT JOIN KhoHang k ON cn.MaCN = k.MaCN
-        LEFT JOIN NhanVien nv ON cn.MaCN = nv.MaCN AND nv.DaXoa = 0
+        LEFT JOIN dbo.v_NhanVien_BanHang nv ON cn.MaCN = nv.MaCN
         GROUP BY cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT
         ORDER BY cn.MaCN ASC;
       `;
@@ -25,7 +25,7 @@ class SqlServerMasterRepository {
         const fbQuery = `
           SELECT cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT,
                  COUNT(DISTINCT k.MaKho) AS SoKhoHang,
-                 0 AS SoNhanVien
+                 CAST(NULL AS INT) AS SoNhanVien
           FROM ChiNhanh cn
           LEFT JOIN KhoHang k ON cn.MaCN = k.MaCN
           GROUP BY cn.MaCN, cn.TenCN, cn.DiaChi, cn.SoDT
@@ -45,12 +45,7 @@ class SqlServerMasterRepository {
     request.input('DiaChi', sql.NVarChar(200), diaChi || null);
     request.input('SoDT', sql.Char(10), soDT);
 
-    const query = `
-      INSERT INTO ChiNhanh (TenCN, DiaChi, SoDT)
-      VALUES (@TenCN, @DiaChi, @SoDT);
-      SELECT SCOPE_IDENTITY() AS MaCN, @TenCN AS TenCN, @DiaChi AS DiaChi, @SoDT AS SoDT;
-    `;
-    const result = await request.query(query);
+    const result = await request.execute('dbo.usp_ThemChiNhanh');
     return result.recordset[0];
   }
 
@@ -96,14 +91,15 @@ class SqlServerMasterRepository {
       SELECT kh.MaKH, kh.HoTen, kh.SoDT, kh.LoaiKH, kh.DiemTichLuy,
              CASE kh.LoaiKH
                WHEN 0 THEN N'Thường'
-               WHEN 1 THEN N'VIP (Giảm 5%)'
-               WHEN 2 THEN N'Kim Cương (Giảm 10%)'
+               WHEN 1 THEN N'VIP (Giảm 10%)'
+               WHEN 2 THEN N'Kim Cương (Giảm 15%)'
                ELSE N'Khác'
              END AS TenHangThanhVien,
              COUNT(dh.MaDH) AS TongSoDonHang,
-             ISNULL(SUM(dh.TongTien), 0) AS TongChiTieu
+             ISNULL(SUM(net.TienThuan), 0) AS TongChiTieu
       FROM KhachHang kh
-      LEFT JOIN DonHang dh ON kh.MaKH = dh.MaKH
+      LEFT JOIN DonHang dh ON kh.MaKH = dh.MaKH AND dh.TrangThai=3
+      OUTER APPLY (SELECT SUM(v.TienSauChietKhau) AS TienThuan FROM dbo.v_InHoaDon_ChiTietPhucHop v WHERE v.MaDH=dh.MaDH) net
       GROUP BY kh.MaKH, kh.HoTen, kh.SoDT, kh.LoaiKH, kh.DiemTichLuy
       ORDER BY kh.DiemTichLuy DESC, kh.MaKH ASC;
     `;
@@ -119,70 +115,18 @@ class SqlServerMasterRepository {
     request.input('LoaiKH', sql.TinyInt, loaiKH || 0);
     request.input('DiemTichLuy', sql.Int, diemTichLuy || 0);
 
-    const query = `
-      INSERT INTO KhachHang (HoTen, SoDT, LoaiKH, DiemTichLuy)
-      VALUES (@HoTen, @SoDT, @LoaiKH, @DiemTichLuy);
-      SELECT SCOPE_IDENTITY() AS MaKH, @HoTen AS HoTen, @SoDT AS SoDT, @LoaiKH AS LoaiKH, @DiemTichLuy AS DiemTichLuy;
-    `;
-    const result = await request.query(query);
+    const result = await request.execute('dbo.usp_ThemKhachHang');
     return result.recordset[0];
   }
 
   // 5. NHÂN VIÊN
   async getEmployees(userContext) {
     const pool = await connectionFactory.getPool(userContext?.user, userContext?.password);
-    const request = pool.request();
-    try {
-      const query = `
-        SELECT nv.MaNV, nv.HoTen, nv.Luong, nv.MaCN, cn.TenCN, nv.MaQL, ql.HoTen AS TenNguoiQuanLy, nv.DaXoa
-        FROM NhanVien nv
-        INNER JOIN ChiNhanh cn ON nv.MaCN = cn.MaCN
-        LEFT JOIN NhanVien ql ON nv.MaQL = ql.MaNV
-        WHERE nv.DaXoa = 0
-        ORDER BY nv.MaCN, nv.MaNV ASC;
-      `;
-      const result = await request.query(query);
-      return result.recordset;
-    } catch (err) {
-      // Bảo mật cấp cột / cấp bảng: Nếu Role bị cấm truy cập bảng NhanVien hoặc cột Luong (Error 229, 230)
-      if (err.number === 229 || err.number === 230 || err.message?.includes('permission was denied')) {
-        try {
-          // 1. Fallback cấp cột: Truy vấn bảng NhanVien nhưng bỏ qua cột Luong (dành cho Thu Ngân / Role không có quyền xem lương)
-          const fallbackColQuery = `
-            SELECT nv.MaNV, nv.HoTen, CAST(NULL AS DECIMAL(12,2)) AS Luong, nv.MaCN, cn.TenCN, nv.MaQL, ql.HoTen AS TenNguoiQuanLy, nv.DaXoa
-            FROM NhanVien nv
-            INNER JOIN ChiNhanh cn ON nv.MaCN = cn.MaCN
-            LEFT JOIN NhanVien ql ON nv.MaQL = ql.MaNV
-            WHERE nv.DaXoa = 0
-            ORDER BY nv.MaCN, nv.MaNV ASC;
-          `;
-          const colResult = await pool.request().query(fallbackColQuery);
-          return colResult.recordset;
-        } catch {
-          // 2. Fallback cấp bảng: Nếu bị cấm toàn bảng NhanVien, chuyển sang View phân cấp nhân sự
-          try {
-            const fallbackQuery = `
-              SELECT 
-                MaNV,
-                TenNhanVien AS HoTen,
-                CAST(NULL AS DECIMAL(12,2)) AS Luong,
-                MaCN,
-                ChiNhanhLamViec AS TenCN,
-                MaQL,
-                NguoiQuanLyTrucTiep AS TenNguoiQuanLy,
-                0 AS DaXoa
-              FROM v_PhanCapNhanSu_ToanDien
-              ORDER BY MaCN, MaNV ASC;
-            `;
-            const fbResult = await pool.request().query(fallbackQuery);
-            return fbResult.recordset;
-          } catch {
-            return [];
-          }
-        }
-      }
-      throw err;
-    }
+    const admin = userContext?.role === 'Role_Admin';
+    const query = admin ? `SELECT nv.MaNV,nv.HoTen,nv.Luong,nv.MaCN,cn.TenCN,nv.MaQL,ql.HoTen AS TenNguoiQuanLy,nv.DaXoa
+      FROM NhanVien nv JOIN ChiNhanh cn ON cn.MaCN=nv.MaCN LEFT JOIN NhanVien ql ON ql.MaNV=nv.MaQL WHERE nv.DaXoa=0`
+      : `SELECT MaNV,HoTen,CAST(NULL AS DECIMAL(12,2)) AS Luong,MaCN,TenCN,MaQL,TenNguoiQuanLy,DaXoa FROM dbo.v_NhanVien_BanHang`;
+    return (await pool.request().query(query)).recordset;
   }
 
   async createEmployee({ hoTen, luong, maCN, maQL }, userContext) {
@@ -193,12 +137,7 @@ class SqlServerMasterRepository {
     request.input('MaCN', sql.Int, maCN);
     request.input('MaQL', sql.Int, maQL || null);
 
-    const query = `
-      INSERT INTO NhanVien (HoTen, Luong, MaCN, MaQL)
-      VALUES (@HoTen, @Luong, @MaCN, @MaQL);
-      SELECT SCOPE_IDENTITY() AS MaNV, @HoTen AS HoTen, @Luong AS Luong, @MaCN AS MaCN, @MaQL AS MaQL;
-    `;
-    const result = await request.query(query);
+    const result = await request.execute('dbo.usp_ThemNhanVien');
     return result.recordset[0];
   }
 

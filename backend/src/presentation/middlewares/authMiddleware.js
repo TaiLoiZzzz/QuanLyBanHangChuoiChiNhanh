@@ -1,18 +1,9 @@
+const sessions = require('./sessionStore');
 function authMiddleware(req, res, next) {
-  const dbUser = req.headers['x-db-user'];
-  const dbPassword = req.headers['x-db-password'];
-
-  if (dbUser && dbPassword) {
-    req.userContext = {
-      user: dbUser,
-      password: dbPassword
-    };
-  } else {
-    // Mặc định chạy dưới tài khoản cấu hình trong .env
-    req.userContext = null;
-  }
-
+  if (!req.path.startsWith('/api/') || (['/api/auth/login','/api/auth/logout'].includes(req.path) && req.method === 'POST')) return next();
+  const session = sessions.get(req);
+  if (!session) return res.status(401).json({ success: false, error: 'Vui lòng đăng nhập.', code: 'UNAUTHENTICATED' });
+  req.userContext = { user: session.user, password: session.password, role: session.role };
   next();
 }
-
 module.exports = authMiddleware;

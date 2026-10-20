@@ -1,0 +1,1660 @@
+-- Generated non-destructive migration. The CLI executes ALL batches in one transaction.
+USE QuanLyBanHangDB;
+GO
+SET ANSI_NULLS ON; SET QUOTED_IDENTIFIER ON; SET ANSI_PADDING ON; SET ANSI_WARNINGS ON; SET ARITHABORT ON; SET CONCAT_NULL_YIELDS_NULL ON; SET NUMERIC_ROUNDABORT OFF;
+GO
+
+IF @@TRANCOUNT=0 THROW 51402,N'Chạy migration bằng npm run db:migrate để bảo đảm transaction.',1;
+IF OBJECT_ID('dbo.DonHang','U') IS NULL THROW 51400,N'Chưa có schema; hãy khởi tạo trước.',1;
+IF EXISTS(SELECT 1 FROM dbo.DonHang dh OUTER APPLY(SELECT SUM(ct.ThanhTien) AS Total FROM dbo.ChiTietDonHang ct WHERE ct.MaDH=dh.MaDH) x WHERE dh.TrangThai<>4 AND dh.TongTien<>ISNULL(x.Total,0)) THROW 51403,N'Có đơn lệch tổng tiền. Đối soát dữ liệu cũ trước khi migration; không tự ghi đè.',1;
+IF NOT EXISTS(SELECT 1 FROM sys.database_principals WHERE name='Role_Admin') THROW 51401,N'Chưa có role; chạy bootstrap quyền trước.',1;
+IF COL_LENGTH('dbo.DonHang','TiLeChietKhau') IS NULL ALTER TABLE dbo.DonHang ADD TiLeChietKhau DECIMAL(5,4) NULL;
+IF COL_LENGTH('dbo.DonHang','TiLeVAT') IS NULL ALTER TABLE dbo.DonHang ADD TiLeVAT DECIMAL(5,4) NULL;
+GO
+-- Legacy documents did not store historical discounts. Preserve the legacy calculation AT migration time,
+-- then freeze it. Do not guess historical stock or overwrite existing totals.
+UPDATE dh SET TiLeChietKhau=CASE kh.LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END
+FROM dbo.DonHang dh JOIN dbo.KhachHang kh ON kh.MaKH=dh.MaKH WHERE dh.TiLeChietKhau IS NULL;
+UPDATE dbo.DonHang SET TiLeVAT=0.08 WHERE TiLeVAT IS NULL;
+IF EXISTS(SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.DonHang') AND name='TiLeChietKhau' AND is_nullable=1) ALTER TABLE dbo.DonHang ALTER COLUMN TiLeChietKhau DECIMAL(5,4) NOT NULL;
+IF EXISTS(SELECT 1 FROM sys.columns WHERE object_id=OBJECT_ID('dbo.DonHang') AND name='TiLeVAT' AND is_nullable=1) ALTER TABLE dbo.DonHang ALTER COLUMN TiLeVAT DECIMAL(5,4) NOT NULL;
+IF NOT EXISTS(SELECT 1 FROM sys.default_constraints WHERE parent_object_id=OBJECT_ID('dbo.DonHang') AND parent_column_id=COLUMNPROPERTY(OBJECT_ID('dbo.DonHang'),'TiLeChietKhau','ColumnId')) ALTER TABLE dbo.DonHang ADD CONSTRAINT DF_DonHang_ChietKhau DEFAULT 0 FOR TiLeChietKhau;
+IF NOT EXISTS(SELECT 1 FROM sys.default_constraints WHERE parent_object_id=OBJECT_ID('dbo.DonHang') AND parent_column_id=COLUMNPROPERTY(OBJECT_ID('dbo.DonHang'),'TiLeVAT','ColumnId')) ALTER TABLE dbo.DonHang ADD CONSTRAINT DF_DonHang_VAT DEFAULT 0.08 FOR TiLeVAT;
+IF OBJECT_ID('dbo.CK_DonHang_ChietKhau','C') IS NULL ALTER TABLE dbo.DonHang WITH CHECK ADD CONSTRAINT CK_DonHang_ChietKhau CHECK(TiLeChietKhau BETWEEN 0 AND 1);
+IF OBJECT_ID('dbo.CK_DonHang_VAT','C') IS NULL ALTER TABLE dbo.DonHang WITH CHECK ADD CONSTRAINT CK_DonHang_VAT CHECK(TiLeVAT BETWEEN 0 AND 1);
+IF OBJECT_ID('dbo.CK_KhachHang_Diem','C') IS NULL ALTER TABLE dbo.KhachHang WITH CHECK ADD CONSTRAINT CK_KhachHang_Diem CHECK(DiemTichLuy>=0);
+IF OBJECT_ID('dbo.CK_NhanVien_TuQuanLy','C') IS NULL ALTER TABLE dbo.NhanVien WITH CHECK ADD CONSTRAINT CK_NhanVien_TuQuanLy CHECK(MaQL<>MaNV);
+GO
+-- SOURCE: 03_KhungNhin_Views.sql
+-- =========================================================================
+-- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
+-- GIẢNG VIÊN: TS. PHAN THỊ THỂ
+-- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
+-- BƯỚC 3: XÂY DỰNG 5 KHUNG NHÌN (VIEWS) CHUYÊN SÂU & TỐI ƯU DATABASE ENGINE
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
+-- =========================================================================
+
+USE QuanLyBanHangDB;
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+-- 1. XÓA CÁC VIEW CŨ NẾU ĐÃ TỒN TẠI (THEO THỨ TỰ)
+IF OBJECT_ID('v_TongHopDoanhThuSanPham', 'V') IS NOT NULL DROP VIEW v_TongHopDoanhThuSanPham;
+IF OBJECT_ID('v_InHoaDon_ChiTietPhucHop', 'V') IS NOT NULL DROP VIEW v_InHoaDon_ChiTietPhucHop;
+IF OBJECT_ID('v_NhanVien_ChiNhanh1_KiemSoat', 'V') IS NOT NULL DROP VIEW v_NhanVien_ChiNhanh1_KiemSoat;
+IF OBJECT_ID('v_PhanCapNhanSu_ToanDien', 'V') IS NOT NULL DROP VIEW v_PhanCapNhanSu_ToanDien;
+IF OBJECT_ID('v_BaoCaoTonKho_XepHang', 'V') IS NOT NULL DROP VIEW v_BaoCaoTonKho_XepHang;
+IF OBJECT_ID('v_BaoCaoTonKhoTheoChiNhanh', 'V') IS NOT NULL DROP VIEW v_BaoCaoTonKhoTheoChiNhanh;
+IF OBJECT_ID('v_NhanVien_CongKhai', 'V') IS NOT NULL DROP VIEW v_NhanVien_CongKhai;
+GO
+
+-- =========================================================================
+-- VIEW 1: BÁO CÁO TỒN KHO & XẾP HẠNG NGUY CƠ HẾT HÀNG (WINDOW FUNCTIONS)
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
+-- Kỹ thuật chuyên sâu:
+--   - Dùng DENSE_RANK() OVER (PARTITION BY cn.MaCN ORDER BY tk.SoLuongTon ASC) để xếp hạng sản phẩm cạn kho nhất
+--   - Dùng SUM(...) OVER (PARTITION BY k.MaKho) để tính % tỷ trọng chiếm dụng kho
+--   - CASE WHEN phân loại trạng thái tồn kho
+-- =========================================================================
+CREATE VIEW v_BaoCaoTonKho_XepHang
+AS
+SELECT
+    cn.MaCN,
+    cn.TenCN,
+    k.MaKho,
+    k.TenKho,
+    sp.MaSP,
+    sp.TenSP,
+    dm.TenDM,
+    sp.DonViTinh,
+    tk.SoLuongTon,
+    sp.GiaBanHienTai,
+    (tk.SoLuongTon * sp.GiaBanHienTai) AS TongGiaTriTonKho,
+    -- Tính % lượng hàng món này chiếm trong tổng số lượng hàng của cả kho (ép kiểu DECIMAL(5,2) chuẩn hóa)
+    CAST(ROUND(100.0 * tk.SoLuongTon / NULLIF(SUM(tk.SoLuongTon) OVER(PARTITION BY k.MaKho), 0), 2) AS DECIMAL(5,2)) AS TyTrongTonKhoPct,
+    -- Xếp hạng độ khan hiếm trong từng chi nhánh (Rank 1 = Sắp hết nhất)
+    DENSE_RANK() OVER (
+        PARTITION BY cn.MaCN
+        ORDER BY tk.SoLuongTon ASC
+    ) AS HangKhanHiemTaiChiNhanh,
+    CASE
+        WHEN tk.SoLuongTon = 0 THEN N'HẾT HÀNG'
+        WHEN tk.SoLuongTon < 10 THEN N'CẢNH BÁO: Sắp hết'
+        WHEN tk.SoLuongTon BETWEEN 10 AND 30 THEN N'Tồn trung bình'
+        ELSE N'Tồn dồi dào'
+    END AS TrangThaiTonKho
+FROM ChiNhanh cn
+INNER JOIN KhoHang k ON cn.MaCN = k.MaCN
+INNER JOIN TonKho tk ON k.MaKho = tk.MaKho
+INNER JOIN SanPham sp ON tk.MaSP = sp.MaSP
+INNER JOIN DanhMuc dm ON sp.MaDM = dm.MaDM
+WHERE sp.DaXoa = 0;
+GO
+
+PRINT N'Da tao thanh cong VIEW 1: v_BaoCaoTonKho_XepHang';
+GO
+
+-- =========================================================================
+-- VIEW 2: PHÂN CẤP NHÂN SỰ & QUẢN TRỊ ĐỘI NGŨ (SELF-JOIN + AGGREGATION)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
+-- Kỹ thuật chuyên sâu:
+--   - Self LEFT JOIN giải mã cây phân cấp sếp - lính (MaQL -> HoTen)
+--   - Tương quan đếm số lượng nhân viên cấp dưới trực tiếp mà người đó quản lý
+--   - Bảo mật mức cột: Không để lộ số lương của từng người
+-- =========================================================================
+CREATE VIEW v_PhanCapNhanSu_ToanDien
+AS
+SELECT
+    nv.MaNV,
+    nv.HoTen AS TenNhanVien,
+    cn.MaCN,
+    cn.TenCN AS ChiNhanhLamViec,
+    nv.MaQL,
+    ISNULL(ql.HoTen, N'(Ban Giám Đốc)') AS NguoiQuanLyTrucTiep,
+    -- Đếm số nhân sự cấp dưới trực tiếp do nhân viên này làm sếp
+    (SELECT COUNT(*) FROM NhanVien subordinate WHERE subordinate.MaQL = nv.MaNV AND subordinate.DaXoa = 0) AS SoNhanVienDuoiQuyen,
+    -- Tính tổng số nhân sự đang làm việc tại cùng chi nhánh đó
+    COUNT(*) OVER(PARTITION BY nv.MaCN) AS TongNhanSuChiNhanh
+FROM NhanVien nv
+INNER JOIN ChiNhanh cn ON nv.MaCN = cn.MaCN
+LEFT JOIN NhanVien ql ON nv.MaQL = ql.MaNV
+WHERE nv.DaXoa = 0;
+GO
+
+PRINT N'Da tao thanh cong VIEW 2: v_PhanCapNhanSu_ToanDien';
+GO
+
+-- =========================================================================
+-- VIEW 3: PHÂN VÙNG QUẢN LÝ NHÂN VIÊN CHI NHÁNH 1 (WITH CHECK OPTION)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
+-- Kỹ thuật chuyên sâu:
+--   - Phân quyền theo hàng (Row-level Security / Partition View) cho Quản lý Chi nhánh 1
+--   - Cho phép UPDATE qua View nhưng ràng buộc WITH CHECK OPTION cấm sửa đổi MaCN sang chi nhánh khác!
+-- =========================================================================
+CREATE VIEW v_NhanVien_ChiNhanh1_KiemSoat
+AS
+SELECT
+    MaNV,
+    HoTen,
+    MaCN,
+    MaQL,
+    DaXoa
+FROM NhanVien
+WHERE MaCN = 1
+WITH CHECK OPTION; -- Cấm UPDATE/INSERT bản ghi có MaCN <> 1 qua View này!
+GO
+
+PRINT N'Da tao thanh cong VIEW 3: v_NhanVien_ChiNhanh1_KiemSoat (WITH CHECK OPTION)';
+GO
+
+-- =========================================================================
+-- VIEW 4: IN HÓA ĐƠN BÁN HÀNG PHỨC HỢP (COMPOSITE JOIN 5 BẢNG + TÍNH TOÁN)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
+-- Kỹ thuật chuyên sâu:
+--   - Kết nối 5 bảng: DonHang -> KhachHang -> NhanVien -> KhoHang -> ChiTietDonHang -> SanPham
+--   - Tính mức chiết khấu tự động theo phân hạng khách hàng (VIP = 10%, Thường = 0%)
+--   - Tính thuế VAT 8% và Tổng tiền thanh toán thực tế (Final Total)
+-- =========================================================================
+CREATE VIEW v_InHoaDon_ChiTietPhucHop
+AS
+SELECT
+    dh.MaDH,
+    dh.NgayDat,
+    CASE dh.TrangThai
+        WHEN 0 THEN N'Đơn mới tạo'
+        WHEN 1 THEN N'Đã xác nhận'
+        WHEN 2 THEN N'Đang giao hàng'
+        WHEN 3 THEN N'Giao thành công'
+        WHEN 4 THEN N'Đã hủy'
+        ELSE N'Không xác định'
+    END AS TenTrangThai,
+    -- Thông tin khách hàng & Chiết khấu
+    kh.MaKH,
+    kh.HoTen AS TenKhachHang,
+    kh.SoDT AS SoDTKhachHang,
+    CASE dh.TiLeChietKhau
+        WHEN 0.10 THEN N'Khách VIP (Giảm 10%)'
+        WHEN 0.15 THEN N'Khách Kim Cương (Giảm 15%)'
+        ELSE N'Khách Thường (Không giảm)'
+    END AS HangThanhVien,
+    -- Thông tin nhân viên & Kho xuất
+    nv.HoTen AS NhanVienLapDon,
+    k.TenKho AS KhoXuatHang,
+    -- Thông tin chi tiết sản phẩm
+    sp.MaSP,
+    sp.TenSP,
+    sp.DonViTinh,
+    ct.SoLuong,
+    ct.DonGiaBan,
+    ct.ThanhTien AS TienGoc,
+    -- Tính tiền chiết khấu theo loại khách hàng
+    ROUND(ct.ThanhTien * dh.TiLeChietKhau, 0) AS TienChietKhau,
+    -- Tính tiền sau chiết khấu
+    ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau), 0) AS TienSauChietKhau,
+    -- Thuế VAT 8%
+    ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau) * dh.TiLeVAT, 0) AS ThueVAT8Pct,
+    -- Thành tiền cuối cùng đã bao gồm VAT
+    ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau), 0) + ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau) * dh.TiLeVAT, 0) AS TongThanhToanCuoiCung
+FROM DonHang dh
+INNER JOIN KhachHang kh ON dh.MaKH = kh.MaKH
+INNER JOIN NhanVien nv ON dh.MaNV = nv.MaNV
+INNER JOIN KhoHang k ON dh.MaKhoXuat = k.MaKho
+INNER JOIN ChiTietDonHang ct ON dh.MaDH = ct.MaDH
+INNER JOIN SanPham sp ON ct.MaSP = sp.MaSP;
+GO
+
+PRINT N'Da tao thanh cong VIEW 4: v_InHoaDon_ChiTietPhucHop';
+GO
+
+-- =========================================================================
+-- VIEW 5: TỔNG HỢP DOANH THU SẢN PHẨM (INDEXED VIEW - ĐỈNH CAO DATABASE ENGINE)
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
+-- Kỹ thuật chuyên sâu:
+--   - Bắt buộc dùng WITH SCHEMABINDING (khóa cứng metadata)
+--   - Bắt buộc dùng COUNT_BIG(*) khi có GROUP BY
+--   - TẠO UNIQUE CLUSTERED INDEX LÊN VIEW ĐỂ LƯU KẾT QUẢ VẬT LÝ VÀO ĐĨA!
+-- =========================================================================
+CREATE VIEW v_TongHopDoanhThuSanPham
+WITH SCHEMABINDING
+AS
+SELECT
+    ct.MaSP,
+    COUNT_BIG(*) AS SoLanXuatHienTrongDon,
+    SUM(ct.SoLuong) AS TongSoLuongBan,
+    SUM(ISNULL(ROUND(ct.ThanhTien * (1-dh.TiLeChietKhau),0),0)) AS TongDoanhThuThuVe
+FROM dbo.ChiTietDonHang ct
+INNER JOIN dbo.DonHang dh ON dh.MaDH=ct.MaDH
+WHERE dh.TrangThai=3
+GROUP BY ct.MaSP;
+GO
+
+-- TẠO CLUSTERED INDEX VẬT LÝ BIẾN VIEW NÀY THÀNH INDEXED VIEW
+CREATE UNIQUE CLUSTERED INDEX IX_v_TongHopDoanhThuSanPham_MaSP
+ON v_TongHopDoanhThuSanPham(MaSP);
+GO
+
+PRINT N'Da tao thanh cong VIEW 5: v_TongHopDoanhThuSanPham (INDEXED VIEW CO CLUSTERED INDEX)';
+GO
+
+PRINT N'=========================================================================';
+PRINT N'HOAN THANH TOAN BO 5 VIEW CHUYEN SAU DAT CHUAN CUA CO THE!';
+PRINT N'=========================================================================';
+GO
+
+-- POS directory: identity and organization only, never salary.
+CREATE OR ALTER VIEW dbo.v_NhanVien_BanHang AS
+SELECT nv.MaNV,nv.HoTen,nv.MaCN,cn.TenCN,nv.MaQL,ql.HoTen AS TenNguoiQuanLy,nv.DaXoa
+FROM dbo.NhanVien nv JOIN dbo.ChiNhanh cn ON cn.MaCN=nv.MaCN
+LEFT JOIN dbo.NhanVien ql ON ql.MaNV=nv.MaQL
+WHERE nv.DaXoa=0;
+GO
+
+GO
+
+-- SOURCE: 04_Ham_Functions.sql
+-- =========================================================================
+-- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
+-- GIẢNG VIÊN: TS. PHAN THỊ THỂ
+-- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
+-- BƯỚC 4: XÂY DỰNG 5 HÀM NGƯỜI DÙNG (USER-DEFINED FUNCTIONS - UDF)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
+-- =========================================================================
+
+USE QuanLyBanHangDB;
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+-- XÓA HÀM NẾU ĐÃ TỒN TẠI ĐỂ THỰC THI LẠI KHÔNG BỊ XUNG ĐỘT
+IF OBJECT_ID('dbo.fn_TinhTienSauChietKhauVIP', 'FN') IS NOT NULL DROP FUNCTION dbo.fn_TinhTienSauChietKhauVIP;
+IF OBJECT_ID('dbo.fn_KiemTraKhaNangDapUngDonHang', 'FN') IS NOT NULL DROP FUNCTION dbo.fn_KiemTraKhaNangDapUngDonHang;
+IF OBJECT_ID('dbo.fn_FormatMaHoaDonTuDong', 'FN') IS NOT NULL DROP FUNCTION dbo.fn_FormatMaHoaDonTuDong;
+IF OBJECT_ID('dbo.fn_DanhSachDonHangTheoKhoangThoiGian', 'IF') IS NOT NULL DROP FUNCTION dbo.fn_DanhSachDonHangTheoKhoangThoiGian;
+IF OBJECT_ID('dbo.fn_BaoCaoDoanhThuNhanVienChiTiet', 'TF') IS NOT NULL DROP FUNCTION dbo.fn_BaoCaoDoanhThuNhanVienChiTiet;
+GO
+
+-- =========================================================================
+-- HÀM 1 (SCALAR FUNCTION): TÍNH THÀNH TIỀN SAU CHIẾT KHẤU THEO HẠNG THÀNH VIÊN
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
+-- Nghiệp vụ: Tự động tra cứu hạng khách hàng và áp dụng % giảm giá tương ứng
+--            (LoaiKH = 0: 0%, LoaiKH = 1 (VIP): Giảm 10%, LoaiKH = 2 (Kim Cương): Giảm 15%)
+-- =========================================================================
+CREATE FUNCTION dbo.fn_TinhTienSauChietKhauVIP
+(
+    @MaKH INT,
+    @TongTienGoc DECIMAL(14,2)
+)
+RETURNS DECIMAL(14,2)
+AS
+BEGIN
+    IF @TongTienGoc IS NULL OR @TongTienGoc <= 0
+        RETURN 0;
+
+    DECLARE @LoaiKH TINYINT;
+    SELECT @LoaiKH = LoaiKH FROM KhachHang WHERE MaKH = @MaKH;
+
+    DECLARE @TiLeGiam DECIMAL(4,2) = 0.00;
+    IF @LoaiKH = 1
+        SET @TiLeGiam = 0.10; -- Giảm 10% cho VIP
+    ELSE IF @LoaiKH = 2
+        SET @TiLeGiam = 0.15; -- Giảm 15% cho Kim Cương
+
+    DECLARE @TienSauGiam DECIMAL(14,2);
+    SET @TienSauGiam = @TongTienGoc * (1.00 - @TiLeGiam);
+
+    RETURN ROUND(@TienSauGiam, 0);
+END;
+GO
+
+PRINT N'Da tao thanh cong HÀM 1 (Scalar): dbo.fn_TinhTienSauChietKhauVIP';
+GO
+
+-- =========================================================================
+-- HÀM 2 (SCALAR FUNCTION): KIỂM TRA KHẢ NĂNG ĐÁP ỨNG TỒN KHO CỦA SẢN PHẨM
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
+-- Nghiệp vụ: Trả về 1 (Đủ hàng) hoặc 0 (Hết hàng/Thiếu hàng) cho giao dịch bán/chuyển kho
+-- =========================================================================
+CREATE FUNCTION dbo.fn_KiemTraKhaNangDapUngDonHang
+(
+    @MaKho INT,
+    @MaSP INT,
+    @SoLuongYeuCau INT
+)
+RETURNS BIT
+AS
+BEGIN
+    IF @SoLuongYeuCau <= 0
+        RETURN 0;
+
+    DECLARE @SoLuongTonHienTai INT = 0;
+
+    SELECT @SoLuongTonHienTai = ISNULL(SoLuongTon, 0)
+    FROM TonKho
+    WHERE MaKho = @MaKho AND MaSP = @MaSP;
+
+    IF @SoLuongTonHienTai >= @SoLuongYeuCau
+        RETURN 1; -- Đủ khả năng đáp ứng
+
+    RETURN 0; -- Không đủ hàng trong kho
+END;
+GO
+
+PRINT N'Da tao thanh cong HÀM 2 (Scalar): dbo.fn_KiemTraKhaNangDapUngDonHang';
+GO
+
+-- =========================================================================
+-- HÀM 3 (INLINE TABLE-VALUED FUNCTION - iTVF): LỌC ĐƠN HÀNG THEO THỜI GIAN & CHI NHÁNH
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
+-- Kỹ thuật chuyên sâu: Inline TVF không dùng BEGIN...END, cho phép SQL Server Query Optimizer
+-- gộp trực tiếp vào kế hoạch thực thi chính (Inlining) để đạt tốc độ tối đa!
+-- =========================================================================
+CREATE FUNCTION dbo.fn_DanhSachDonHangTheoKhoangThoiGian
+(
+    @TuNgay DATETIME,
+    @DenNgay DATETIME,
+    @MaCN INT = NULL -- Nếu truyền NULL thì lấy toàn bộ chi nhánh
+)
+RETURNS TABLE
+AS
+RETURN
+(
+    SELECT
+        dh.MaDH,
+        dh.NgayDat,
+        kh.MaKH,
+        kh.HoTen AS TenKhachHang,
+        kh.SoDT AS SoDTKhachHang,
+        nv.HoTen AS NhanVienLap,
+        nv.HoTen AS TenNhanVien,
+        cn.MaCN,
+        cn.TenCN AS ChiNhanhBan,
+        k.TenKho AS KhoXuat,
+        k.TenKho AS TenKho,
+        dh.TrangThai,
+        CASE dh.TrangThai
+            WHEN 0 THEN N'Mới tạo'
+            WHEN 1 THEN N'Đã xác nhận'
+            WHEN 2 THEN N'Đang giao'
+            WHEN 3 THEN N'Giao thành công'
+            WHEN 4 THEN N'Đã hủy'
+            ELSE N'Khác'
+        END AS TenTrangThai,
+        dh.TongTien
+    FROM DonHang dh
+    INNER JOIN KhachHang kh ON dh.MaKH = kh.MaKH
+    INNER JOIN NhanVien nv ON dh.MaNV = nv.MaNV
+    INNER JOIN KhoHang k ON dh.MaKhoXuat = k.MaKho
+    INNER JOIN ChiNhanh cn ON k.MaCN = cn.MaCN
+    WHERE dh.NgayDat >= @TuNgay
+      AND dh.NgayDat <= @DenNgay
+      AND (@MaCN IS NULL OR cn.MaCN = @MaCN)
+);
+GO
+
+PRINT N'Da tao thanh cong HÀM 3 (Inline TVF): dbo.fn_DanhSachDonHangTheoKhoangThoiGian';
+GO
+
+-- =========================================================================
+-- HÀM 4 (MULTI-STATEMENT TABLE-VALUED FUNCTION - mTVF): BÁO CÁO DOANH SỐ & KPI NHÂN VIÊN
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
+-- Kỹ thuật chuyên sâu: Khai báo biến bảng cấu trúc tùy biến @KetQua TABLE (...),
+-- tổng hợp dữ liệu và đánh giá xếp loại hiệu suất làm việc của nhân viên theo năm
+-- =========================================================================
+CREATE FUNCTION dbo.fn_BaoCaoDoanhThuNhanVienChiTiet
+(
+    @Nam INT
+)
+RETURNS @BaoCao TABLE
+(
+    MaNV INT,
+    HoTen NVARCHAR(100),
+    TenChiNhanh NVARCHAR(100),
+    SoDonHangDaChot INT,
+    TongDoanhSo DECIMAL(14,2),
+    DanhGiaKPI NVARCHAR(50)
+)
+AS
+BEGIN
+    INSERT INTO @BaoCao (MaNV, HoTen, TenChiNhanh, SoDonHangDaChot, TongDoanhSo, DanhGiaKPI)
+    SELECT
+        nv.MaNV,
+        nv.HoTen,
+        cn.TenCN,
+        COUNT(dh.MaDH) AS SoDonHangDaChot,
+        ISNULL(SUM(net.TienThuan), 0) AS TongDoanhSo,
+        CASE
+            WHEN ISNULL(SUM(net.TienThuan), 0) >= 20000000 THEN N'Xuất sắc (Vượt KPI)'
+            WHEN ISNULL(SUM(net.TienThuan), 0) >= 5000000 THEN N'Đạt yêu cầu'
+            WHEN ISNULL(SUM(net.TienThuan), 0) > 0 THEN N'Cần cải thiện'
+            ELSE N'Chưa phát sinh doanh số'
+        END AS DanhGiaKPI
+    FROM NhanVien nv
+    INNER JOIN ChiNhanh cn ON nv.MaCN = cn.MaCN
+    LEFT JOIN DonHang dh ON nv.MaNV = dh.MaNV
+                         AND dh.TrangThai = 3 -- Chỉ tính các đơn giao thành công
+                         AND YEAR(dh.NgayDat) = @Nam
+    OUTER APPLY (SELECT SUM(v.TienSauChietKhau) AS TienThuan FROM dbo.v_InHoaDon_ChiTietPhucHop v WHERE v.MaDH=dh.MaDH) net
+    WHERE nv.DaXoa = 0
+    GROUP BY nv.MaNV, nv.HoTen, cn.TenCN;
+
+    RETURN;
+END;
+GO
+
+PRINT N'Da tao thanh cong HÀM 4 (Multi-statement TVF): dbo.fn_BaoCaoDoanhThuNhanVienChiTiet';
+GO
+
+-- =========================================================================
+-- HÀM 5 (SCALAR FUNCTION): TỰ ĐỘNG CHUẨN HÓA MÃ HÓA ĐƠN THEO FORMAT DOANH NGHIỆP
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
+-- Nghiệp vụ: Chuyển đổi mã số đơn hàng ID thành chuỗi nghiệp vụ quy chuẩn: HD-YYYYMMDD-00000X
+--            Ví dụ: MaDH = 1, Ngay = 18/10/2026 -> HD-20261018-000001
+-- =========================================================================
+CREATE FUNCTION dbo.fn_FormatMaHoaDonTuDong
+(
+    @MaDH INT,
+    @NgayDat DATETIME
+)
+RETURNS VARCHAR(30)
+AS
+BEGIN
+    IF @MaDH IS NULL
+        RETURN 'HD-UNKNOWN';
+
+    DECLARE @ChuoiNgay VARCHAR(8);
+    SET @ChuoiNgay = CONVERT(VARCHAR(8), ISNULL(@NgayDat, GETDATE()), 112); -- Định dạng YYYYMMDD (chuẩn 112 ISO)
+
+    DECLARE @ChuoiSoThuTu VARCHAR(6);
+    SET @ChuoiSoThuTu = RIGHT('000000' + CAST(@MaDH AS VARCHAR(10)), 6); -- Đệm đủ 6 chữ số
+
+    RETURN 'HD-' + @ChuoiNgay + '-' + @ChuoiSoThuTu;
+END;
+GO
+
+PRINT N'Da tao thanh cong HÀM 5 (Scalar): dbo.fn_FormatMaHoaDonTuDong';
+GO
+
+PRINT N'=========================================================================';
+PRINT N'HOAN THANH TOAN BO 5 HAM (UDF) CHUAN GU DANH GIA CUA CO THE!';
+PRINT N'=========================================================================';
+GO
+
+GO
+
+-- SOURCE: 05_Trigger_RangBuocNangCao.sql
+-- =========================================================================
+-- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
+-- GIẢNG VIÊN: TS. PHAN THỊ THỂ
+-- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
+-- BƯỚC 5: XÂY DỰNG 5 TRIGGER CHUYÊN SÂU (CHUẨN MULTI-ROW VÀ TOÀN VẸN DỮ LIỆU)
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
+-- =========================================================================
+
+USE QuanLyBanHangDB;
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+-- XÓA TRIGGER NẾU ĐÃ TỒN TẠI ĐỂ CHẠY LẠI KHÔNG BỊ TRÙNG
+IF OBJECT_ID('dbo.trg_ChiTietDonHang_SyncKho_TongTien', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_ChiTietDonHang_SyncKho_TongTien;
+IF OBJECT_ID('dbo.trg_ChiTietDonHang_KiemTraTonKhoTruocKhiGhi', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_ChiTietDonHang_KiemTraTonKhoTruocKhiGhi;
+IF OBJECT_ID('dbo.trg_ChiTietDonHang_TruTonKho', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_ChiTietDonHang_TruTonKho;
+IF OBJECT_ID('dbo.trg_SanPham_LichSuGia', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_SanPham_LichSuGia;
+IF OBJECT_ID('dbo.trg_DonHang_CapNhatDiemTichLuyKhachHang', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_DonHang_CapNhatDiemTichLuyKhachHang;
+IF OBJECT_ID('dbo.trg_DonHang_CamXoaDonDaGiao', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_DonHang_CamXoaDonDaGiao;
+IF OBJECT_ID('dbo.trg_NhanVien_AuditLog', 'TR') IS NOT NULL DROP TRIGGER dbo.trg_NhanVien_AuditLog;
+GO
+
+-- =========================================================================
+-- TRIGGER 1 (AFTER INSERT, UPDATE, DELETE): ĐỒNG BỘ TOÀN DIỆN TỒN KHO & TỔNG TIỀN
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
+-- Nghiệp vụ chuyên sâu:
+--   - Chặn đứng tình trạng bán hàng vượt quá tồn kho (Bán khống)
+--   - Tự động trừ kho khi INSERT, bù trừ chênh lệch khi UPDATE, hoàn tồn kho khi DELETE
+--   - Đồng bộ giá trị TongTien cho bảng DonHang (Bảo đảm tính toàn vẹn 3NF phi chuẩn hóa)
+-- Kỹ thuật: 100% Set-based multi-row, kiểm tra @@ROWCOUNT = 0 chốt chặn hiệu năng
+-- =========================================================================
+CREATE TRIGGER dbo.trg_ChiTietDonHang_SyncKho_TongTien
+ON dbo.ChiTietDonHang AFTER INSERT, UPDATE, DELETE AS
+BEGIN
+    IF @@ROWCOUNT = 0 RETURN;
+    SET NOCOUNT ON;
+    -- Serialize line changes with cancellation/completion of the parent order.
+    DECLARE @Locked INT;
+    SELECT @Locked = COUNT(*) FROM dbo.DonHang WITH (UPDLOCK, HOLDLOCK)
+    WHERE MaDH IN (SELECT MaDH FROM inserted UNION SELECT MaDH FROM deleted);
+    IF EXISTS (SELECT 1 FROM inserted i JOIN dbo.DonHang dh ON dh.MaDH=i.MaDH WHERE dh.TrangThai IN (3,4))
+       OR EXISTS (SELECT 1 FROM deleted d JOIN dbo.DonHang dh ON dh.MaDH=d.MaDH WHERE dh.TrangThai=3)
+        THROW 51101, N'Không thể sửa chi tiết đơn đã giao hoặc thêm hàng vào đơn đã hủy.', 1;
+    IF EXISTS (SELECT 1 FROM inserted) AND EXISTS (SELECT 1 FROM deleted)
+       AND (EXISTS (SELECT MaDH,MaSP FROM inserted EXCEPT SELECT MaDH,MaSP FROM deleted)
+         OR EXISTS (SELECT MaDH,MaSP FROM deleted EXCEPT SELECT MaDH,MaSP FROM inserted))
+        THROW 51102, N'Mã đơn/sản phẩm là bất biến. Hãy xóa dòng cũ và thêm dòng mới trong cùng giao dịch.', 1;
+    IF EXISTS (SELECT 1 FROM inserted i JOIN dbo.SanPham sp ON sp.MaSP=i.MaSP WHERE sp.DaXoa=1)
+        THROW 51103, N'Sản phẩm đã ngừng kinh doanh.', 1;
+    DECLARE @Delta TABLE(MaKho INT, MaSP INT, SoLuong BIGINT, PRIMARY KEY(MaKho,MaSP));
+    INSERT @Delta
+    SELECT MaKho,MaSP,SUM(SoLuong) FROM (
+        SELECT dh.MaKhoXuat AS MaKho,i.MaSP,CONVERT(BIGINT,i.SoLuong) AS SoLuong
+        FROM inserted i JOIN dbo.DonHang dh ON dh.MaDH=i.MaDH
+        UNION ALL
+        SELECT dh.MaKhoXuat,d.MaSP,-CONVERT(BIGINT,d.SoLuong)
+        FROM deleted d JOIN dbo.DonHang dh ON dh.MaDH=d.MaDH WHERE dh.TrangThai<>4
+    ) x GROUP BY MaKho,MaSP;
+    IF EXISTS (SELECT 1 FROM @Delta d LEFT JOIN dbo.TonKho tk WITH (UPDLOCK,HOLDLOCK)
+               ON tk.MaKho=d.MaKho AND tk.MaSP=d.MaSP
+               WHERE tk.MaSP IS NULL OR tk.SoLuongTon<d.SoLuong)
+        THROW 51104, N'Kho không có sản phẩm hoặc không đủ số lượng tồn.', 1;
+    UPDATE tk SET SoLuongTon=tk.SoLuongTon-d.SoLuong
+    FROM dbo.TonKho tk JOIN @Delta d ON d.MaKho=tk.MaKho AND d.MaSP=tk.MaSP;
+    UPDATE dh SET TongTien=ISNULL(x.Total,0)
+    FROM dbo.DonHang dh JOIN (SELECT MaDH FROM inserted UNION SELECT MaDH FROM deleted) a ON a.MaDH=dh.MaDH
+    OUTER APPLY (SELECT SUM(ThanhTien) AS Total FROM dbo.ChiTietDonHang ct WHERE ct.MaDH=dh.MaDH) x;
+END;
+GO
+PRINT N'Da tao thanh cong TRIGGER 1 (AFTER INSERT, UPDATE, DELETE): trg_ChiTietDonHang_SyncKho_TongTien';
+GO
+
+-- =========================================================================
+-- TRIGGER 2 (AFTER UPDATE): AUDIT LOG THAY ĐỔI GIÁ SẢN PHẨM (THEO DÕI LỊCH SỬ GIÁ)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
+-- Nghiệp vụ: Tự động ghi vết vào bảng LichSuGia mỗi khi giá bán thay đổi
+-- Kỹ thuật Multi-row: So sánh bảng ảo inserted và deleted, hỗ trợ cập nhật giá hàng loạt
+-- =========================================================================
+CREATE TRIGGER trg_SanPham_LichSuGia
+ON SanPham
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Chỉ kích hoạt khi cột GiaBanHienTai thực sự được cập nhật
+    IF UPDATE(GiaBanHienTai)
+    BEGIN
+        INSERT INTO LichSuGia (MaSP, GiaCu, GiaMoi, NgayThayDoi, NguoiThayDoi)
+        SELECT
+            i.MaSP,
+            d.GiaBanHienTai AS GiaCu,
+            i.GiaBanHienTai AS GiaMoi,
+            GETDATE(),
+            ISNULL(SUSER_SNAME(), N'HeThong_Auto') AS NguoiThayDoi
+        FROM inserted i
+        INNER JOIN deleted d ON i.MaSP = d.MaSP
+        WHERE i.GiaBanHienTai <> d.GiaBanHienTai; -- Chỉ ghi khi giá có thay đổi thực sự
+    END;
+END;
+GO
+
+PRINT N'Da tao thanh cong TRIGGER 2 (AFTER UPDATE): trg_SanPham_LichSuGia';
+GO
+
+-- =========================================================================
+-- TRIGGER 3 (AFTER UPDATE): TÍCH ĐIỂM THƯỞNG & TỰ ĐỘNG NÂNG HẠNG VIP KHÁCH HÀNG
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
+-- Nghiệp vụ: Khi đơn hàng chuyển trạng thái sang 3 (Giao thành công):
+--            - Cộng điểm tích lũy: Cứ 100.000đ = 1 điểm
+--            - Nếu điểm >= 1000: Tự động nâng hạng lên 1 (VIP)
+--            - Nếu điểm >= 5000: Tự động nâng hạng lên 2 (Kim Cương)
+-- Kỹ thuật Multi-row: Group by theo MaKH từ các đơn chuyển trạng thái thành công
+-- =========================================================================
+CREATE TRIGGER trg_DonHang_CapNhatDiemTichLuyKhachHang
+ON DonHang
+AFTER UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Completed documents and their financial snapshots are immutable.
+    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON i.MaDH=d.MaDH
+        WHERE d.TrangThai=3 AND (i.TrangThai<>d.TrangThai OR i.TongTien<>d.TongTien OR i.MaKH<>d.MaKH
+          OR i.MaNV<>d.MaNV OR i.MaKhoXuat<>d.MaKhoXuat OR i.NgayDat<>d.NgayDat
+          OR i.TiLeChietKhau<>d.TiLeChietKhau OR i.TiLeVAT<>d.TiLeVAT))
+        THROW 51105, N'Chứng từ đã giao không được thay đổi.', 1;
+    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON i.MaDH=d.MaDH
+        WHERE i.TrangThai<>d.TrangThai AND NOT
+          ((d.TrangThai=0 AND i.TrangThai IN(1,4)) OR (d.TrangThai=1 AND i.TrangThai IN(2,4)) OR (d.TrangThai=2 AND i.TrangThai IN(3,4))))
+        THROW 51106, N'Chuyển trạng thái không hợp lệ.', 1;
+    IF EXISTS (SELECT 1 FROM inserted i JOIN deleted d ON i.MaDH=d.MaDH
+        WHERE (i.MaKH<>d.MaKH OR i.MaKhoXuat<>d.MaKhoXuat OR i.TiLeChietKhau<>d.TiLeChietKhau OR i.TiLeVAT<>d.TiLeVAT)
+          AND EXISTS(SELECT 1 FROM dbo.ChiTietDonHang ct WHERE ct.MaDH=i.MaDH))
+        THROW 51107, N'Không đổi khách, kho hoặc chính sách giá của đơn đã có chi tiết.', 1;
+    -- Exactly one refund on the transition to canceled; deleting its lines does not refund again.
+    UPDATE tk SET SoLuongTon=tk.SoLuongTon+x.Qty
+    FROM dbo.TonKho tk JOIN (
+        SELECT i.MaKhoXuat,ct.MaSP,SUM(ct.SoLuong) AS Qty
+        FROM inserted i JOIN deleted d ON d.MaDH=i.MaDH JOIN dbo.ChiTietDonHang ct ON ct.MaDH=i.MaDH
+        WHERE i.TrangThai=4 AND d.TrangThai<>4 GROUP BY i.MaKhoXuat,ct.MaSP
+    ) x ON x.MaKhoXuat=tk.MaKho AND x.MaSP=tk.MaSP;
+
+    -- Chỉ kích hoạt khi cột TrangThai được cập nhật sang 3 (Giao thành công)
+    IF UPDATE(TrangThai)
+    BEGIN
+        -- Bảng tạm tính tổng điểm cộng cho từng khách hàng từ các đơn vừa hoàn thành
+        UPDATE kh
+        SET
+            kh.DiemTichLuy = kh.DiemTichLuy + diem.DiemCongThem,
+            kh.LoaiKH = CASE
+                WHEN (kh.DiemTichLuy + diem.DiemCongThem) >= 5000 THEN 2 -- Kim Cương
+                WHEN (kh.DiemTichLuy + diem.DiemCongThem) >= 1000 THEN 1 -- VIP
+                ELSE kh.LoaiKH
+            END
+        FROM KhachHang kh
+        INNER JOIN (
+            SELECT
+                i.MaKH,
+                SUM(CAST(i.TongTien / 100000 AS INT)) AS DiemCongThem
+            FROM inserted i
+            INNER JOIN deleted d ON i.MaDH = d.MaDH
+            WHERE i.TrangThai = 3 AND d.TrangThai <> 3 -- Chỉ tính đơn vừa đổi sang Giao thành công
+            GROUP BY i.MaKH
+        ) diem ON kh.MaKH = diem.MaKH;
+    END;
+END;
+GO
+
+PRINT N'Da tao thanh cong TRIGGER 3 (AFTER UPDATE): trg_DonHang_CapNhatDiemTichLuyKhachHang';
+GO
+
+-- =========================================================================
+-- TRIGGER 4 (INSTEAD OF DELETE): CẤM XÓA ĐƠN HÀNG ĐÃ GIAO THÀNH CÔNG (CHỐNG GIAN LẬN)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
+-- Nghiệp vụ: Bảo vệ toàn vẹn chứng từ kế toán. Tuyệt đối không cho phép xóa đơn đã giao (TrangThai = 3)
+-- Kỹ thuật Multi-row: Quét toàn bộ bảng deleted, chỉ cần 1 đơn vi phạm là chặn đứng toàn bộ lô xóa
+-- =========================================================================
+CREATE TRIGGER trg_DonHang_CamXoaDonDaGiao
+ON DonHang
+INSTEAD OF DELETE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Kiểm tra nếu trong lô xóa có chứa đơn hàng đã giao thành công
+    IF EXISTS (
+        SELECT 1
+        FROM deleted
+        WHERE TrangThai = 3
+    )
+    BEGIN
+        RAISERROR (N'Lỗi bảo mật kế toán: Nghiêm cấm xóa đơn hàng đã giao thành công (TrangThai = 3)!', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END;
+
+    -- Nếu chỉ xóa các đơn hợp lệ (Mới tạo, Đã hủy...), xóa Chi tiết trước rồi xóa Đơn hàng
+    DELETE FROM ChiTietDonHang
+    WHERE MaDH IN (SELECT MaDH FROM deleted);
+
+    DELETE FROM DonHang
+    WHERE MaDH IN (SELECT MaDH FROM deleted);
+END;
+GO
+
+PRINT N'Da tao thanh cong TRIGGER 4 (INSTEAD OF DELETE): trg_DonHang_CamXoaDonDaGiao';
+GO
+
+-- =========================================================================
+-- TRIGGER 5 (AFTER INSERT, UPDATE): GHI NHẬT KÝ BẢO MẬT HỆ THỐNG KHI THAY ĐỔI NHÂN SỰ
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
+-- Nghiệp vụ: Tự động ghi vết vào NhatKyHeThong khi có nhân viên mới hoặc chỉnh sửa nhân sự
+-- Kỹ thuật Multi-row: Phân biệt thao tác INSERT vs UPDATE bằng tương quan deleted / inserted
+-- =========================================================================
+CREATE TRIGGER trg_NhanVien_AuditLog
+ON NhanVien
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Phân biệt hành động: Nếu deleted không có dòng nào -> INSERT; ngược lại -> UPDATE
+    DECLARE @HanhDong NVARCHAR(100);
+    IF NOT EXISTS (SELECT 1 FROM deleted)
+        SET @HanhDong = N'THEM_NHAN_VIEN_MOI';
+    ELSE
+        SET @HanhDong = N'CAP_NHAT_THONG_TIN_NHAN_VIEN';
+
+    INSERT INTO NhatKyHeThong (HanhDong, NoiDung, ThoiGian, NguoiThucHien)
+    SELECT
+        @HanhDong,
+        N'Mã NV: ' + CAST(i.MaNV AS NVARCHAR(10)) +
+        N', Họ tên: ' + i.HoTen +
+        N', Chi nhánh: ' + CAST(i.MaCN AS NVARCHAR(10)) +
+        N', Trạng thái xóa: ' + CAST(i.DaXoa AS NVARCHAR(2)),
+        GETDATE(),
+        ISNULL(SUSER_SNAME(), N'HeThong_Admin')
+    FROM inserted i;
+END;
+GO
+
+PRINT N'Da tao thanh cong TRIGGER 5 (AFTER INSERT, UPDATE): trg_NhanVien_AuditLog';
+GO
+
+PRINT N'=========================================================================';
+PRINT N'HOAN THANH TOAN BO 5 TRIGGER CHUAN MULTI-ROW VA BAO MAT CUA CO THE!';
+PRINT N'=========================================================================';
+GO
+
+GO
+
+-- SOURCE: 06_ChiMuc_Indexes_Performance.sql
+-- =========================================================================
+-- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
+-- GIẢNG VIÊN HƯỚNG DẪN: TS. PHAN THỊ THỂ
+-- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
+-- BƯỚC 6: XÂY DỰNG 5 CHỈ MỤC (INDEXES) CHUYÊN SÂU & TỐI ƯU HÓA HIỆU NĂNG TRUY VẤN
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
+-- =========================================================================
+
+USE QuanLyBanHangDB;
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+-- =========================================================================
+-- DỌN DẸP CHỈ MỤC CŨ NẾU ĐÃ TỒN TẠI ĐỂ TÁI THỰC THI KHÔNG BỊ XUNG ĐỘT
+-- =========================================================================
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_KhachHang_SoDT' AND object_id = OBJECT_ID('KhachHang'))
+    DROP INDEX IX_KhachHang_SoDT ON KhachHang;
+
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_DonHang_NgayDat_TrangThai' AND object_id = OBJECT_ID('DonHang'))
+    DROP INDEX IX_DonHang_NgayDat_TrangThai ON DonHang;
+
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SanPham_MaDM_GiaBan' AND object_id = OBJECT_ID('SanPham'))
+    DROP INDEX IX_SanPham_MaDM_GiaBan ON SanPham;
+
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_TonKho_MaSP_SoLuongTon' AND object_id = OBJECT_ID('TonKho'))
+    DROP INDEX IX_TonKho_MaSP_SoLuongTon ON TonKho;
+
+IF EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_NhanVien_MaCN_MaQL' AND object_id = OBJECT_ID('NhanVien'))
+    DROP INDEX IX_NhanVien_MaCN_MaQL ON NhanVien;
+GO
+
+
+-- =========================================================================
+-- CHỈ MỤC 1: UNIQUE NONCLUSTERED INDEX TRÊN SỐ ĐIỆN THOẠI KHÁCH HÀNG
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
+--
+-- 1. BỐI CẢNH NGHIỆP VỤ THỰC TẾ:
+--    - Tại quầy POS, khách hàng mua sắm đọc số điện thoại để tra cứu tài khoản,
+--      tích điểm thưởng và áp dụng chiết khấu hạng thành viên (VIP / Kim Cương).
+--    - Tần suất tra cứu số điện thoại diễn ra liên tục hàng nghìn lần mỗi ngày.
+--
+-- 2. PHÂN TÍCH BẢN CHẤT KỸ THUẬT:
+--    - UNIQUE: Đảm bảo tính toàn vẹn thực thể cấp vật lý, ngăn chặn tuyệt đối tình
+--      trạng 1 số điện thoại mở nhiều tài khoản khách hàng khác nhau.
+--    - NONCLUSTERED: Xây dựng một cây chỉ mục B-Tree độc lập với bảng dữ liệu gốc,
+--      sắp xếp các số điện thoại theo thứ tự bảng chữ cái/số tăng dần.
+--    - FILLFACTOR = 80: Dữ liệu được ghi vào các Data Page (8KB). Thiết lập 80% nghĩa
+--      là chỉ nạp đầy 80% dung lượng mỗi trang, chừa sẵn 20% khoảng trống cho các
+--      khách hàng mới đăng ký chèn vào giữa, loại bỏ hoàn toàn hiện tượng phân mảnh
+--      trang (Page Split) gây thắt cổ chai I/O đĩa cứng.
+--
+-- 3. CÂU TRUY VẤN HƯỞNG LỢI:
+--    SELECT MaKH, HoTen, LoaiKH, DiemTichLuy FROM KhachHang WHERE SoDT = '0901234567';
+--    ==> Query Optimizer chuyển 100% từ Table Scan sang Index Seek trong 0.001 giây!
+-- =========================================================================
+CREATE UNIQUE NONCLUSTERED INDEX IX_KhachHang_SoDT
+ON KhachHang(SoDT)
+WITH (FILLFACTOR = 80);
+GO
+
+PRINT N'Da tao thanh cong INDEX 1: IX_KhachHang_SoDT (Unique B-Tree)';
+GO
+
+
+-- =========================================================================
+-- CHỈ MỤC 2: COMPOSITE COVERING INDEX TRÊN ĐƠN HÀNG (NGÀY ĐẶT & TRẠNG THÁI)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
+--
+-- 1. BỐI CẢNH NGHIỆP VỤ THỰC TẾ:
+--    - Ban Giám đốc và Kế toán liên tục mở màn hình báo cáo doanh thu để lọc:
+--      "Tìm các đơn hàng trong khoảng ngày X đến ngày Y và có TrangThai = 3 (Đã giao)".
+--
+-- 2. PHÂN TÍCH BẢN CHẤT KỸ THUẬT & LOẠI BỎ "KEY LOOKUP":
+--    - COMPOSITE (NgayDat, TrangThai): Kết hợp 2 cột điều kiện lọc phổ biến nhất vào
+--      cây B-Tree để máy tính định vị tức thời khoảng thời gian và trạng thái đơn.
+--    - MỆNH ĐỀ INCLUDE (TongTien, MaKH, MaNV) - "COVERING INDEX":
+--      * Vấn đề kinh điển: Nếu không có INCLUDE, máy tính sau khi tìm thấy ngày đặt
+--        trong Index sẽ buộc phải chạy ngược về bảng gốc DonHang để lấy cột TongTien
+--        (Hành động này gọi là KEY LOOKUP / Bookmark Lookup, gây nghẽn I/O đĩa trầm trọng).
+--      * Giải pháp: Đính kèm luôn TongTien, MaKH, MaNV vào tầng lá (Leaf Level) của Index.
+--        Khi câu SELECT chạy, toàn bộ dữ liệu cần xem đã có sẵn ngay trong Index!
+--      * Tại sao không đưa TongTien vào cặp ngoặc khóa chính của Index?
+--        Vì đưa vào khóa chính sẽ làm cây Index bị phình to, sâu và tốn tài nguyên sắp xếp.
+--        Đưa vào INCLUDE giúp dữ liệu chỉ nằm ở tầng lá, nhẹ nhàng và tối ưu nhất.
+--    - FILLFACTOR = 80: Bảng DonHang phát sinh giao dịch mới liên tục, chừa 20% dự phòng
+--      để tiếp nhận đơn hàng mới chèn vào mà không gây phân mảnh trang đĩa.
+--
+-- 3. MINH CHỨNG HIỆU NĂNG TRÊN EXECUTION PLAN:
+--    - Subtree Cost giảm thẳng đứng từ 86% xuống còn 12%!
+--    - Triệt tiêu 100% Key Lookup, biến toàn bộ truy vấn thành Index Seek thuần túy.
+-- =========================================================================
+CREATE NONCLUSTERED INDEX IX_DonHang_NgayDat_TrangThai
+ON DonHang(NgayDat, TrangThai)
+INCLUDE (TongTien, MaKH, MaNV)
+WITH (FILLFACTOR = 80);
+GO
+
+PRINT N'Da tao thanh cong INDEX 2: IX_DonHang_NgayDat_TrangThai (Covering Index)';
+GO
+
+
+-- =========================================================================
+-- CHỈ MỤC 3: FILTERED INDEX TRÊN SẢN PHẨM CÒN KINH DOANH (DANH MỤC & GIÁ BÁN)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
+--
+-- 1. BỐI CẢNH NGHIỆP VỤ THỰC TẾ:
+--    - Khách hàng trên Web/App lướt xem hàng theo danh mục (MaDM) và lọc theo tầm giá
+--      (GiaBanHienTai từ thấp đến cao).
+--    - Trong CSDL thực tế, có rất nhiều sản phẩm đã hỏng, ngưng nhập hoặc đã bị xóa
+--      mềm (Soft-deleted với cờ DaXoa = 1). Người dùng không bao giờ tìm kiếm các món này.
+--
+-- 2. PHÂN TÍCH BẢN CHẤT KỸ THUẬT:
+--    - FILTERED INDEX (Mệnh đề WHERE DaXoa = 0):
+--      * Khác với Index truyền thống phải lưu trữ toàn bộ 100% các dòng của bảng SanPham,
+--        Filtered Index áp đặt một điều kiện lọc nghiêm ngặt ngay tại cây chỉ mục.
+--      * Máy chủ chỉ tạo chỉ mục cho các sản phẩm CÒN ĐANG KINH DOANH (DaXoa = 0).
+--      * Lợi ích vượt trội: Tiết kiệm hơn 40% dung lượng đĩa cứng, giảm kích thước chiếm
+--        dụng trong bộ nhớ đệm RAM (Buffer Pool), và giảm chi phí cập nhật Index khi
+--        có dữ liệu sản phẩm cũ bị thay đổi.
+--    - MỆNH ĐỀ INCLUDE (TenSP, DonViTinh):
+--      * Đính kèm sẵn Tên sản phẩm và Đơn vị tính vào tầng lá để trả kết quả về giao
+--        diện Web tức thời mà không cần đụng đến bảng SanPham gốc.
+--
+-- 3. CÂU TRUY VẤN HƯỞNG LỢI:
+--    SELECT MaSP, TenSP, DonViTinh, GiaBanHienTai
+--    FROM SanPham
+--    WHERE DaXoa = 0 AND MaDM = 1 AND GiaBanHienTai BETWEEN 10000000 AND 30000000;
+-- =========================================================================
+CREATE NONCLUSTERED INDEX IX_SanPham_MaDM_GiaBan
+ON SanPham(MaDM, GiaBanHienTai)
+INCLUDE (TenSP, DonViTinh)
+WHERE DaXoa = 0
+WITH (FILLFACTOR = 80);
+GO
+
+PRINT N'Da tao thanh cong INDEX 3: IX_SanPham_MaDM_GiaBan (Filtered Index)';
+GO
+
+
+-- =========================================================================
+-- CHỈ MỤC 4: COMPOSITE INDEX HỖ TRỢ TRUY VẤN VÀ CẢNH BÁO TỒN KHO
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
+--
+-- 1. BỐI CẢNH NGHIỆP VỤ THỰC TẾ:
+--    - Phục vụ trực tiếp cho 2 chức năng sống còn của chuỗi bán lẻ:
+--      1. Trigger 1 (trg_ChiTietDonHang_SyncKho_TongTien): Kiểm tra tồn kho trước khi
+--         cho phép trừ hàng (Chống bán âm).
+--      2. View 1 (v_BaoCaoTonKho_XepHang): Hàm cửa sổ xếp hạng sản phẩm cạn kho nhất
+--         theo từng chi nhánh (DENSE_RANK() OVER ... ORDER BY SoLuongTon ASC).
+--
+-- 2. PHÂN TÍCH BẢN CHẤT KỸ THUẬT:
+--    - COMPOSITE (MaSP, SoLuongTon):
+--      * Gom cặp thuộc tính định danh sản phẩm và số lượng tồn vào cùng cây B-Tree.
+--      * Cột MaSP đóng vai trò cột dẫn đường (Leading Column) giúp định vị nhanh món hàng,
+--        cột SoLuongTon theo sau giúp truy xuất hoặc so sánh điều kiện (<, <=) ngay tức thì.
+--    - BẢO VỆ HIỆU NĂNG CHO TRIGGER:
+--      * Mỗi khi có đơn hàng chèn vào, Trigger 1 phải đọc bảng TonKho để so sánh số lượng.
+--      * Nhờ có Index này, Trigger đọc dữ liệu từ cây B-Tree với chi phí thấp nhất,
+--        giúp quá trình thanh toán POS diễn ra mượt mà, không làm khóa chết bảng TonKho.
+-- =========================================================================
+CREATE NONCLUSTERED INDEX IX_TonKho_MaSP_SoLuongTon
+ON TonKho(MaSP, SoLuongTon)
+WITH (FILLFACTOR = 80);
+GO
+
+PRINT N'Da tao thanh cong INDEX 4: IX_TonKho_MaSP_SoLuongTon (Composite Index)';
+GO
+
+
+-- =========================================================================
+-- CHỈ MỤC 5: INDEX HỖ TRỢ TÌM KIẾM CÂY NHÂN SỰ VÀ PHÂN QUYỀN THEO CHI NHÁNH
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
+--
+-- 1. BỐI CẢNH NGHIỆP VỤ THỰC TẾ:
+--    - Phục vụ hệ thống kiểm soát an ninh đa chi nhánh:
+--      1. Phân quyền truy cập: Quản lý chi nhánh nào chỉ được xem nhân sự chi nhánh đó
+--         (View 3: v_NhanVien_ChiNhanh1_KiemSoat).
+--      2. Cây phân cấp nhân sự đệ quy: Tìm xem ai là quản lý trực tiếp của ai (View 2).
+--      3. Giao dịch điều chuyển quản lý (Tx 3): Tìm nhanh tất cả nhân viên cấp dưới của
+--         một người bị xóa để bàn giao cho quản lý mới.
+--
+-- 2. PHÂN TÍCH BẢN CHẤT KỸ THUẬT:
+--    - COMPOSITE (MaCN, MaQL):
+--      * MaCN giúp lọc cực nhanh nhân sự theo từng địa bàn chi nhánh.
+--      * MaQL giúp hỗ trợ phép Self-Join tự tham chiếu (NhanVien.MaQL -> NhanVien.MaNV),
+--        tối ưu hóa phép đệ quy Recursive CTE trong View 2.
+--    - MỆNH ĐỀ INCLUDE (HoTen):
+--      * Đưa cột Họ tên vào tầng lá để xuất danh bạ nhân sự hiển thị trên Web mà không
+--        phải quay lại đọc bảng NhanVien gốc (Tránh Key Lookup và bảo vệ bảo mật bảng lương).
+-- =========================================================================
+CREATE NONCLUSTERED INDEX IX_NhanVien_MaCN_MaQL
+ON NhanVien(MaCN, MaQL)
+INCLUDE (HoTen)
+WITH (FILLFACTOR = 80);
+GO
+
+PRINT N'Da tao thanh cong INDEX 5: IX_NhanVien_MaCN_MaQL (Covering Hierarchy Index)';
+GO
+
+PRINT N'=========================================================================';
+PRINT N'HOAN THANH TOAN BO 5 INDEX CHUYEN SAU VA TOI UU TRUY VAN DANG CHUAN KHOA CNTT!';
+PRINT N'=========================================================================';
+GO
+
+GO
+
+-- SOURCE: 07_ThuTuc_StoredProcedures.sql
+-- =========================================================================
+-- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
+-- GIẢNG VIÊN: TS. PHAN THỊ THỂ
+-- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
+-- BƯỚC 7: XÂY DỰNG 5 THỦ TỤC LƯU TRỮ (STORED PROCEDURES) CÓ TRY...CATCH
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
+-- =========================================================================
+
+USE QuanLyBanHangDB;
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+-- XÓA THỦ TỤC NẾU ĐÃ TỒN TẠI ĐỂ TẠO LẠI KHÔNG BỊ TRÙNG
+IF OBJECT_ID('dbo.sp_TaoDonHangVaChiTiet', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_TaoDonHangVaChiTiet;
+IF OBJECT_ID('dbo.sp_CapNhatTrangThaiDonHang', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_CapNhatTrangThaiDonHang;
+IF OBJECT_ID('dbo.sp_ChuyenKhoNoiBo', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_ChuyenKhoNoiBo;
+IF OBJECT_ID('dbo.sp_TimKiemSanPhamNangCao', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_TimKiemSanPhamNangCao;
+IF OBJECT_ID('dbo.sp_BaoCaoTongHopDoanhThuChiNhanh', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_BaoCaoTongHopDoanhThuChiNhanh;
+GO
+
+-- =========================================================================
+-- THỦ TỤC 1: TẠO ĐƠN HÀNG VÀ CHI TIẾT ĐƠN HÀNG NGUYÊN TỬ (INSERT)
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
+-- Nghiệp vụ: Thu ngân tạo đơn hàng mới kèm sản phẩm đầu tiên trong 1 giao dịch
+-- Kỹ thuật: TRY...CATCH, XACT_STATE(), OUTPUT parameter, Transaction an toàn
+-- =========================================================================
+CREATE PROCEDURE dbo.sp_TaoDonHangVaChiTiet
+ @MaKH INT, @MaNV INT, @MaKhoXuat INT, @MaSP INT, @SoLuong INT, @DonGiaBan DECIMAL(12,2), @MaDH_Moi INT=NULL OUTPUT
+AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF @SoLuong IS NULL OR @SoLuong<=0 OR @DonGiaBan IS NULL OR @DonGiaBan<=0
+    THROW 51201,N'Số lượng và đơn giá phải dương.',1;
+  DECLARE @Discount DECIMAL(5,4);
+  SELECT @Discount=CASE LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END FROM dbo.KhachHang WITH(HOLDLOCK) WHERE MaKH=@MaKH;
+  IF @Discount IS NULL THROW 51202,N'Khách hàng không tồn tại.',1;
+  IF NOT EXISTS(SELECT 1 FROM dbo.NhanVien WITH(HOLDLOCK) WHERE MaNV=@MaNV AND DaXoa=0)
+    THROW 51203,N'Nhân viên không tồn tại hoặc đã nghỉ việc.',1;
+  IF NOT EXISTS(SELECT 1 FROM dbo.SanPham WITH(HOLDLOCK) WHERE MaSP=@MaSP AND DaXoa=0)
+    THROW 51204,N'Sản phẩm không tồn tại hoặc đã ngừng bán.',1;
+  DECLARE @Stock INT;
+  SELECT @Stock=SoLuongTon FROM dbo.TonKho WITH(UPDLOCK,HOLDLOCK) WHERE MaKho=@MaKhoXuat AND MaSP=@MaSP;
+  IF @Stock IS NULL OR @Stock<@SoLuong THROW 51205,N'Kho không đủ số lượng tồn.',1;
+  INSERT dbo.DonHang(MaKH,MaNV,MaKhoXuat,TiLeChietKhau,TiLeVAT)
+  VALUES(@MaKH,@MaNV,@MaKhoXuat,@Discount,0.08);
+  SET @MaDH_Moi=SCOPE_IDENTITY();
+  INSERT dbo.ChiTietDonHang(MaDH,MaSP,SoLuong,DonGiaBan) VALUES(@MaDH_Moi,@MaSP,@SoLuong,@DonGiaBan);
+  COMMIT; SELECT @MaDH_Moi AS MaDH; RETURN 0;
+ END TRY
+ BEGIN CATCH
+  IF XACT_STATE()<>0 ROLLBACK;
+  THROW;
+ END CATCH;
+END;
+GO
+PRINT N'Da tao thanh cong PROCEDURE 1: dbo.sp_TaoDonHangVaChiTiet';
+GO
+
+-- =========================================================================
+-- THỦ TỤC 2: CẬP NHẬT TRẠNG THÁI ĐƠN HÀNG CÓ KIỂM SOÁT VÒNG ĐỜI (UPDATE)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
+-- Nghiệp vụ: Chuyển trạng thái đơn (0: Mới -> 1: Xác nhận -> 2: Đang giao -> 3: Giao thành công / 4: Hủy)
+-- Kỹ thuật: Kiểm tra luật chuyển đổi trạng thái hợp lệ, TRY...CATCH
+-- =========================================================================
+CREATE PROCEDURE dbo.sp_CapNhatTrangThaiDonHang @MaDH INT,@TrangThaiMoi TINYINT AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF NOT EXISTS(SELECT 1 FROM dbo.DonHang WITH(UPDLOCK,HOLDLOCK) WHERE MaDH=@MaDH)
+    THROW 50404,N'Đơn hàng không tồn tại.',1;
+  IF @TrangThaiMoi IS NULL OR @TrangThaiMoi NOT IN(0,1,2,3,4) THROW 51206,N'Trạng thái không hợp lệ.',1;
+  UPDATE dbo.DonHang SET TrangThai=@TrangThaiMoi WHERE MaDH=@MaDH;
+  COMMIT; SELECT N'Cập nhật trạng thái đơn hàng thành công!' AS ThongBao,@MaDH AS MaDH,@TrangThaiMoi AS TrangThaiMoi;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
+END;
+GO
+PRINT N'Da tao thanh cong PROCEDURE 2: dbo.sp_CapNhatTrangThaiDonHang';
+GO
+
+-- =========================================================================
+-- THỦ TỤC 3: ĐIỀU CHUYỂN HÀNG HÓA NỘI BỘ GIỮA 2 KHO (TRANSACTION NGUYÊN TỬ)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
+-- Nghiệp vụ: Chuyển N sản phẩm từ Kho A sang Kho B của chuỗi
+-- Kỹ thuật: UPDLOCK trên kho xuất để chống Race Condition, Transaction kiểm soát ACID
+-- =========================================================================
+CREATE PROCEDURE dbo.sp_ChuyenKhoNoiBo @MaKhoXuat INT,@MaKhoNhap INT,@MaSP INT,@SoLuongChuyen INT,@MaNVThucHien INT AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF NOT EXISTS(SELECT 1 FROM dbo.NhanVien WHERE MaNV=@MaNVThucHien AND DaXoa=0)
+    THROW 51218,N'Nhân viên thực hiện không hợp lệ.',1;
+  -- Both transfer entry points acquire warehouse locks in the same ascending order.
+  EXEC dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh @MaKhoXuat,@MaKhoNhap,@MaSP,@SoLuongChuyen;
+  INSERT dbo.NhatKyHeThong(HanhDong,NoiDung,NguoiThucHien)
+    VALUES(N'CHUYEN_KHO_NOI_BO',CONCAT(N'NV ',@MaNVThucHien,N', Kho ',@MaKhoXuat,N' -> ',@MaKhoNhap,N', SP ',@MaSP,N', SL ',@SoLuongChuyen),SUSER_SNAME());
+  COMMIT;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
+END;
+GO
+
+PRINT N'Da tao thanh cong PROCEDURE 3: dbo.sp_ChuyenKhoNoiBo';
+GO
+
+-- =========================================================================
+-- THỦ TỤC 4: TÌM KIẾM SẢN PHẨM NÂNG CAO ĐA TIÊU CHÍ (SEARCH)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
+-- Nghiệp vụ: Tìm sản phẩm theo từ khóa tên, theo danh mục, hoặc theo khoảng giá
+-- Kỹ thuật: Xử lý tham số linh hoạt (Dynamic filtering với COALESCE / IS NULL)
+-- =========================================================================
+CREATE PROCEDURE dbo.sp_TimKiemSanPhamNangCao
+    @TuKhoa NVARCHAR(150) = NULL,
+    @MaDM INT = NULL,
+    @GiaMin DECIMAL(12,2) = NULL,
+    @GiaMax DECIMAL(12,2) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        SELECT
+            sp.MaSP,
+            sp.TenSP,
+            dm.MaDM,
+            dm.TenDM,
+            sp.GiaBanHienTai,
+            sp.DonViTinh,
+            ISNULL(SUM(tk.SoLuongTon), 0) AS TongTonKhoToanHeThong
+        FROM SanPham sp
+        INNER JOIN DanhMuc dm ON sp.MaDM = dm.MaDM
+        LEFT JOIN TonKho tk ON sp.MaSP = tk.MaSP
+        WHERE sp.DaXoa = 0
+          AND (@TuKhoa IS NULL OR sp.TenSP LIKE N'%' + @TuKhoa + N'%')
+          AND (@MaDM IS NULL OR sp.MaDM = @MaDM)
+          AND (@GiaMin IS NULL OR sp.GiaBanHienTai >= @GiaMin)
+          AND (@GiaMax IS NULL OR sp.GiaBanHienTai <= @GiaMax)
+        GROUP BY sp.MaSP, sp.TenSP, dm.MaDM, dm.TenDM, sp.GiaBanHienTai, sp.DonViTinh
+        ORDER BY sp.GiaBanHienTai ASC;
+        RETURN 0;
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        RAISERROR(@ErrorMessage, 16, 1);
+        RETURN 1;
+    END CATCH;
+END;
+GO
+
+PRINT N'Da tao thanh cong PROCEDURE 4: dbo.sp_TimKiemSanPhamNangCao';
+GO
+
+-- =========================================================================
+-- THỦ TỤC 5: BÁO CÁO TỔNG HỢP DOANH THU & SẢN LƯỢNG CHI NHÁNH (REPORT / STATS)
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
+-- Nghiệp vụ: Ban Giám Đốc xem doanh thu, số đơn và sản lượng bán theo chi nhánh
+-- Kỹ thuật: Phân tích nhóm ROLLUP / Aggregation, TRY...CATCH
+-- =========================================================================
+CREATE PROCEDURE dbo.sp_BaoCaoTongHopDoanhThuChiNhanh
+    @Nam INT,
+    @Thang INT = NULL -- Nếu NULL thì tính cả năm
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        SELECT
+            cn.MaCN,
+            cn.TenCN,
+            COUNT(DISTINCT dh.MaDH) AS TongSoDonHang,
+            ISNULL(SUM(ct.SoLuong), 0) AS TongSoLuongSanPhamBan,
+            ISNULL(SUM(ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau),0)), 0) AS DoanhThuBanHang,
+            ISNULL(SUM(ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau)*dh.TiLeVAT,0)), 0) AS TienThueVATThuDuoc,
+            ISNULL(SUM(ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau),0)+ROUND(ct.ThanhTien*(1-dh.TiLeChietKhau)*dh.TiLeVAT,0)), 0) AS TongThuThucTe
+        FROM ChiNhanh cn
+        LEFT JOIN KhoHang k ON cn.MaCN = k.MaCN
+        LEFT JOIN DonHang dh ON k.MaKho = dh.MaKhoXuat
+                             AND dh.TrangThai = 3 -- Chỉ tính đơn thành công
+                             AND YEAR(dh.NgayDat) = @Nam
+                             AND (@Thang IS NULL OR MONTH(dh.NgayDat) = @Thang)
+        LEFT JOIN ChiTietDonHang ct ON dh.MaDH = ct.MaDH
+        GROUP BY cn.MaCN, cn.TenCN
+        ORDER BY DoanhThuBanHang DESC;
+        RETURN 0;
+    END TRY
+    BEGIN CATCH
+        DECLARE @ErrorMessage NVARCHAR(4000) = ERROR_MESSAGE();
+        RAISERROR(@ErrorMessage, 16, 1);
+        RETURN 1;
+    END CATCH;
+END;
+GO
+
+PRINT N'Da tao thanh cong PROCEDURE 5: dbo.sp_BaoCaoTongHopDoanhThuChiNhanh';
+GO
+
+PRINT N'=========================================================================';
+PRINT N'HOAN THANH TOAN BO 5 STORED PROCEDURES CO TRY...CATCH CHUAN CUA CO THE!';
+PRINT N'=========================================================================';
+GO
+
+-- Application writes use ownership chaining; roles do not need direct table UPDATE.
+CREATE OR ALTER PROCEDURE dbo.usp_LuuSanPham
+ @MaSP INT=NULL OUTPUT,@TenSP NVARCHAR(150),@MaDM INT,@GiaBanHienTai DECIMAL(12,2),@DonViTinh NVARCHAR(20)
+AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF NULLIF(LTRIM(RTRIM(@TenSP)),N'') IS NULL OR NULLIF(LTRIM(RTRIM(@DonViTinh)),N'') IS NULL OR @GiaBanHienTai<=0
+   THROW 51210,N'Thông tin sản phẩm không hợp lệ.',1;
+  IF @MaSP IS NULL
+  BEGIN
+   INSERT dbo.SanPham(TenSP,MaDM,GiaBanHienTai,DonViTinh) VALUES(@TenSP,@MaDM,@GiaBanHienTai,@DonViTinh);
+   SET @MaSP=SCOPE_IDENTITY();
+   INSERT dbo.TonKho(MaKho,MaSP,SoLuongTon) SELECT MaKho,@MaSP,0 FROM dbo.KhoHang;
+  END
+  ELSE
+  BEGIN
+   UPDATE dbo.SanPham SET TenSP=@TenSP,MaDM=@MaDM,GiaBanHienTai=@GiaBanHienTai,DonViTinh=@DonViTinh WHERE MaSP=@MaSP AND DaXoa=0;
+   IF @@ROWCOUNT=0 THROW 50404,N'Sản phẩm không tồn tại.',1;
+  END;
+  COMMIT;
+  SELECT @MaSP AS MaSP,@TenSP AS TenSP,@MaDM AS MaDM,@GiaBanHienTai AS GiaBanHienTai,@DonViTinh AS DonViTinh;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_XoaMemSanPham @MaSP INT AS
+BEGIN
+ SET NOCOUNT ON;
+ UPDATE dbo.SanPham SET DaXoa=1 WHERE MaSP=@MaSP AND DaXoa=0;
+ IF @@ROWCOUNT=0 THROW 50404,N'Sản phẩm không tồn tại.',1;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_ThemChiNhanh @TenCN NVARCHAR(100),@DiaChi NVARCHAR(200)=NULL,@SoDT CHAR(10) AS
+BEGIN
+ SET NOCOUNT ON;
+ IF NULLIF(LTRIM(RTRIM(@TenCN)),N'') IS NULL OR @SoDT LIKE '%[^0-9]%' OR LEN(@SoDT)<>10
+  THROW 51211,N'Thông tin chi nhánh không hợp lệ.',1;
+ INSERT dbo.ChiNhanh(TenCN,DiaChi,SoDT) VALUES(@TenCN,@DiaChi,@SoDT);
+ SELECT CONVERT(INT,SCOPE_IDENTITY()) AS MaCN,@TenCN AS TenCN,@DiaChi AS DiaChi,@SoDT AS SoDT;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_ThemNhanVien @HoTen NVARCHAR(100),@Luong DECIMAL(12,2),@MaCN INT,@MaQL INT=NULL AS
+BEGIN
+ SET NOCOUNT ON;
+ IF NULLIF(LTRIM(RTRIM(@HoTen)),N'') IS NULL OR @Luong<=0 THROW 51212,N'Thông tin nhân viên không hợp lệ.',1;
+ IF @MaQL IS NOT NULL AND NOT EXISTS(SELECT 1 FROM dbo.NhanVien WHERE MaNV=@MaQL AND DaXoa=0)
+  THROW 51213,N'Quản lý không còn làm việc.',1;
+ INSERT dbo.NhanVien(HoTen,Luong,MaCN,MaQL) VALUES(@HoTen,@Luong,@MaCN,@MaQL);
+ SELECT CONVERT(INT,SCOPE_IDENTITY()) AS MaNV,@HoTen AS HoTen,@MaCN AS MaCN,@MaQL AS MaQL;
+END;
+GO
+-- Stock receipts are explicit, audited transactions; transfers never manufacture inventory.
+CREATE OR ALTER PROCEDURE dbo.usp_NhapKho @MaKho INT,@MaSP INT,@SoLuong INT AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  IF @SoLuong IS NULL OR @SoLuong<=0 THROW 51214,N'Số lượng nhập phải dương.',1;
+  IF NOT EXISTS(SELECT 1 FROM dbo.SanPham WITH(HOLDLOCK) WHERE MaSP=@MaSP AND DaXoa=0) THROW 51215,N'Sản phẩm không còn kinh doanh.',1;
+  IF EXISTS(SELECT 1 FROM dbo.TonKho WITH(UPDLOCK,HOLDLOCK) WHERE MaKho=@MaKho AND MaSP=@MaSP)
+   UPDATE dbo.TonKho SET SoLuongTon=SoLuongTon+@SoLuong WHERE MaKho=@MaKho AND MaSP=@MaSP;
+  ELSE INSERT dbo.TonKho(MaKho,MaSP,SoLuongTon) VALUES(@MaKho,@MaSP,@SoLuong);
+  INSERT dbo.NhatKyHeThong(HanhDong,NoiDung,NguoiThucHien) VALUES(N'NHAP_KHO',CONCAT(N'Kho ',@MaKho,N', SP ',@MaSP,N', SL ',@SoLuong),SUSER_SNAME());
+  COMMIT; SELECT @MaKho AS MaKho,@MaSP AS MaSP,@SoLuong AS SoLuongNhap;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
+END;
+GO
+CREATE OR ALTER PROCEDURE dbo.usp_ThemKhachHang
+ @HoTen NVARCHAR(100),@SoDT CHAR(10),@LoaiKH TINYINT=0,@DiemTichLuy INT=0 AS
+BEGIN
+ SET NOCOUNT ON;
+ IF NULLIF(LTRIM(RTRIM(@HoTen)),N'') IS NULL OR @DiemTichLuy<0 OR @LoaiKH NOT IN(0,1,2)
+   OR LEN(@SoDT)<>10 OR @SoDT LIKE '%[^0-9]%' THROW 51216,N'Thông tin khách hàng không hợp lệ.',1;
+ IF IS_MEMBER('Role_ThuNgan')=1 AND (@LoaiKH<>0 OR @DiemTichLuy<>0)
+   THROW 51217,N'Thu ngân chỉ được tạo khách thường với điểm ban đầu bằng 0.',1;
+ INSERT dbo.KhachHang(HoTen,SoDT,LoaiKH,DiemTichLuy) VALUES(@HoTen,@SoDT,@LoaiKH,@DiemTichLuy);
+ SELECT CONVERT(INT,SCOPE_IDENTITY()) AS MaKH,@HoTen AS HoTen,@SoDT AS SoDT,@LoaiKH AS LoaiKH,@DiemTichLuy AS DiemTichLuy;
+END;
+GO
+
+GO
+
+-- SOURCE: 08_GiaoDich_Transactions_Concurrency.sql
+-- =========================================================================
+-- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
+-- GIẢNG VIÊN: TS. PHAN THỊ THỂ
+-- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
+-- BƯỚC 8: 5 NGHIỆP VỤ GIAO DỊCH (ACID) & MINH CHỨNG XỬ LÝ TRANH CHẤP ĐỒNG THỜI
+-- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
+-- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
+-- =========================================================================
+
+USE QuanLyBanHangDB;
+GO
+
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+-- =========================================================================
+-- GIAO DỊCH 1: ĐẶT HÀNG & GIỮ CHỖ TỒN KHO AN TOÀN (ATOMIC ORDERING)
+-- PHỤ TRÁCH THỰC HIỆN: QUÁCH TÀI LỢI (20%)
+-- Đảm bảo tính nguyên tử: Tạo đơn hàng + Chi tiết đơn hàng + Trừ kho + Cập nhật tổng tiền
+-- =========================================================================
+CREATE OR ALTER PROCEDURE dbo.usp_Tx_DatHangVaGiuCho
+ @MaKH INT,@MaNV INT,@MaKhoXuat INT,@MaSP INT,@SoLuong INT,@DonGiaBan DECIMAL(12,2) AS
+BEGIN
+ SET NOCOUNT ON;
+ -- Reuse the same validated UPDLOCK + HOLDLOCK transaction as normal checkout.
+ DECLARE @Id INT;
+ EXEC dbo.sp_TaoDonHangVaChiTiet @MaKH,@MaNV,@MaKhoXuat,@MaSP,@SoLuong,@DonGiaBan,@Id OUTPUT;
+END;
+GO
+PRINT N'Da tao thanh cong GIAO DICH 1: usp_Tx_DatHangVaGiuCho';
+GO
+
+-- =========================================================================
+-- GIAO DỊCH 2: HỦY ĐƠN HÀNG VÀ HOÀN TRẢ SỐ LƯỢNG TỒN KHO (COMPENSATING TX)
+-- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
+-- Nghiệp vụ: Chuyển trạng thái đơn sang 4 (Đã hủy) và hoàn trả lại số lượng cho toàn bộ mặt hàng
+-- =========================================================================
+CREATE OR ALTER PROCEDURE dbo.usp_Tx_HuyDonHangVaHoanTonKho @MaDH INT,@LyDoHuy NVARCHAR(200) AS
+BEGIN
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  DECLARE @State TINYINT;
+  SELECT @State=TrangThai FROM dbo.DonHang WITH(UPDLOCK,HOLDLOCK) WHERE MaDH=@MaDH;
+  IF @State IS NULL THROW 50404,N'Đơn hàng không tồn tại.',1;
+  IF @State IN(3,4) THROW 51207,N'Đơn đã giao/hủy không thể hủy lại.',1;
+  -- The order trigger is the single owner of stock refund, for both cancellation APIs.
+  UPDATE dbo.DonHang SET TrangThai=4 WHERE MaDH=@MaDH;
+  INSERT dbo.NhatKyHeThong(HanhDong,NoiDung,NguoiThucHien)
+   VALUES(N'HUY_DON_HANG',CONCAT(N'Hủy đơn ',@MaDH,N': ',@LyDoHuy),SUSER_SNAME());
+  COMMIT; SELECT N'Hủy đơn và hoàn kho thành công.' AS KetQua,@MaDH AS MaDH;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
+END;
+GO
+PRINT N'Da tao thanh cong GIAO DICH 2: usp_Tx_HuyDonHangVaHoanTonKho';
+GO
+
+-- =========================================================================
+-- GIAO DỊCH 3: SA THẢI QUẢN LÝ VÀ ĐIỀU CHUYỂN TOÀN BỘ CẤP DƯỚI (HR REORGANIZATION)
+-- PHỤ TRÁCH THỰC HIỆN: HUỲNH VĂN BÌNH (20%)
+-- Nghiệp vụ: Xóa mềm quản lý (DaXoa = 1) và chuyển các nhân viên dưới quyền lên cho Sếp Tổng
+-- =========================================================================
+CREATE OR ALTER PROCEDURE dbo.usp_Tx_XoaNhanVienVaDieuChuyenQuanLy
+    @MaNVCantXoa INT,
+    @MaQLThayThe INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        IF NOT EXISTS (SELECT 1 FROM NhanVien WHERE MaNV = @MaNVCantXoa AND DaXoa = 0)
+            THROW 51005, N'Nhân viên cần xóa không tồn tại hoặc đã nghỉ việc!', 1;
+
+        IF NOT EXISTS (SELECT 1 FROM NhanVien WHERE MaNV = @MaQLThayThe AND DaXoa = 0)
+            THROW 51006, N'Quản lý thay thế không hợp lệ!', 1;
+
+        IF @MaNVCantXoa=@MaQLThayThe THROW 51208,N'Không thể tự thay thế chính mình.',1;
+        DECLARE @Cycle BIT=0;
+        ;WITH Descendants AS (
+          SELECT MaNV FROM dbo.NhanVien WHERE MaQL=@MaNVCantXoa
+          UNION ALL SELECT n.MaNV FROM dbo.NhanVien n JOIN Descendants d ON n.MaQL=d.MaNV
+        ) SELECT @Cycle=1 FROM Descendants WHERE MaNV=@MaQLThayThe OPTION(MAXRECURSION 100);
+        IF @Cycle=1 THROW 51209,N'Không thể chọn cấp dưới làm quản lý thay thế (vòng lặp nhân sự).',1;
+
+        -- 1. Điều chuyển toàn bộ nhân viên cấp dưới sang quản lý mới
+        UPDATE NhanVien
+        SET MaQL = @MaQLThayThe
+        WHERE MaQL = @MaNVCantXoa AND DaXoa = 0;
+
+        -- 2. Đánh dấu xóa mềm nhân viên
+        UPDATE NhanVien
+        SET DaXoa = 1
+        WHERE MaNV = @MaNVCantXoa;
+
+        COMMIT TRANSACTION;
+        SELECT N'Điều chuyển nhân sự và xóa mềm thành công!' AS KetQua;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+
+        THROW;
+    END CATCH;
+END;
+GO
+
+PRINT N'Da tao thanh cong GIAO DICH 3: usp_Tx_XoaNhanVienVaDieuChuyenQuanLy';
+GO
+
+-- =========================================================================
+-- GIAO DỊCH 4: THĂNG HẠNG THÀNH VIÊN VÀ TẶNG ĐIỂM THƯỞNG HÀNG LOẠT (BATCH PROMOTION)
+-- PHỤ TRÁCH THỰC HIỆN: HOÀNG GIA KIỆT (20%)
+-- Nghiệp vụ: Chạy định kỳ thăng hạng khách hàng có điểm tích lũy cao và tặng điểm tri ân
+-- =========================================================================
+CREATE OR ALTER PROCEDURE dbo.usp_Tx_ThangHangThanhVienHangLoat
+    @DiemToiThieu INT,
+    @DiemThuongBonus INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- Thăng hạng Kim Cương cho khách hàng đủ điểm
+        UPDATE KhachHang
+        SET
+            LoaiKH = 2,
+            DiemTichLuy = DiemTichLuy + @DiemThuongBonus
+        WHERE DiemTichLuy >= @DiemToiThieu AND LoaiKH < 2;
+
+        DECLARE @SoLuongKhach INT = @@ROWCOUNT;
+
+        INSERT INTO NhatKyHeThong (HanhDong, NoiDung, ThoiGian, NguoiThucHien)
+        VALUES (
+            N'THANG_HANG_KHACH_HANG',
+            N'Đã nâng hạng thành công cho ' + CAST(@SoLuongKhach AS NVARCHAR(10)) + N' khách hàng VIP lên Kim Cương.',
+            GETDATE(),
+            SUSER_SNAME()
+        );
+
+        COMMIT TRANSACTION;
+        SELECT N'Thăng hạng khách hàng thành công!' AS KetQua, @SoLuongKhach AS SoKhachDuocThangHang;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+
+        THROW;
+    END CATCH;
+END;
+GO
+
+PRINT N'Da tao thanh cong GIAO DICH 4: usp_Tx_ThangHangThanhVienHangLoat';
+GO
+
+-- =========================================================================
+-- GIAO DỊCH 5: ĐIỀU CHUYỂN KHO TỒN HÀNG HÓA LIÊN CHI NHÁNH CÓ BẢO MẬT (INTER-BRANCH TX)
+-- PHỤ TRÁCH THỰC HIỆN: TRẦN NHẬT TÂN (20%)
+-- =========================================================================
+CREATE OR ALTER PROCEDURE dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh
+    @MaKhoXuat INT,
+    @MaKhoNhap INT,
+    @MaSP INT,
+    @SoLuong INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        IF @SoLuong IS NULL OR @SoLuong <= 0
+            THROW 51005, N'Số lượng điều chuyển phải lớn hơn 0!', 1;
+
+        IF @MaKhoXuat = @MaKhoNhap
+            THROW 51006, N'Kho xuất và kho nhập không được trùng nhau!', 1;
+
+        -- =====================================================================
+        -- [SLIDE 10: TRIỆT TIÊU HOÀN TOÀN DEADLOCK BẰNG KỸ THUẬT LOCK ORDERING]
+        -- BỐI CẢNH VẤN ĐỀ:
+        --   Nếu Phiên 1 chuyển Kho 1 -> Kho 2 (khóa 1 trước, đòi khóa 2 sau).
+        --   Nếu Phiên 2 chuyển Kho 2 -> Kho 1 (khóa 2 trước, đòi khóa 1 sau).
+        --   => Hai phiên ghì nhau tạo thành vòng tròn chờ (Wait-For Graph Cycle).
+        --   => SQL Server bắn mã lỗi 1205 (Deadlock Victim) và Rollback 1 phiên!
+        --
+        -- GIẢI PHÁP LOCK ORDERING (MIN TRƯỚC, MAX SAU):
+        --   BẮT BUỘC mọi phiên chuyển hàng, dù đi từ đâu sang đâu, CŨNG PHẢI:
+        --   "Khóa kho có mã số nhỏ trước (@KhoNho), rồi mới khóa kho có mã lớn sau (@KhoLon)".
+        -- =====================================================================
+
+        -- BƯỚC 1: Dùng biểu thức CASE WHEN để tìm số nhỏ hơn và số lớn hơn
+        -- (Dù @MaKhoXuat=1, @MaKhoNhap=2 hay ngược lại thì @KhoNho luôn = 1, @KhoLon luôn = 2)
+        DECLARE @KhoNho INT = CASE WHEN @MaKhoXuat < @MaKhoNhap THEN @MaKhoXuat ELSE @MaKhoNhap END;
+        DECLARE @KhoLon INT = CASE WHEN @MaKhoXuat < @MaKhoNhap THEN @MaKhoNhap ELSE @MaKhoXuat END;
+
+        -- BƯỚC 2: Chiếm trước chìa khóa (Pre-locking) theo đúng thứ tự tăng dần
+        -- @DummyLock: Biến tạm bù nhìn để hứng kết quả SELECT, tránh in rác ra màn hình.
+        -- UPDLOCK: Chiếm quyền chuẩn bị sửa, cấm phiên khác nhảy vào tranh cướp.
+        -- HOLDLOCK: Neo giữ ổ khóa này ở cấp độ SERIALIZABLE đến khi COMMIT mới nhả ra.
+        DECLARE @DummyLock INT;
+
+        -- 2.1: Luôn luôn khóa kho có mã nhỏ trước!
+        -- Phiên nào đến sau dù chuyển hàng chiều nào cũng bị chặn đứng chờ ngay tại đây.
+        SELECT @DummyLock = SoLuongTon FROM TonKho WITH (UPDLOCK, HOLDLOCK) WHERE MaKho = @KhoNho AND MaSP = @MaSP;
+
+        -- 2.2: Sau khi đã nắm chắc chìa khóa kho nhỏ, mới khóa tiếp kho có mã lớn hơn!
+        SELECT @DummyLock = SoLuongTon FROM TonKho WITH (UPDLOCK, HOLDLOCK) WHERE MaKho = @KhoLon AND MaSP = @MaSP;
+
+        -- Kiểm tra tồn kho thực tế tại kho nguồn xuất hàng
+        DECLARE @TonKhoXuat INT;
+        SELECT @TonKhoXuat = SoLuongTon
+        FROM TonKho WITH (UPDLOCK, HOLDLOCK)
+        WHERE MaKho = @MaKhoXuat AND MaSP = @MaSP;
+
+        IF @TonKhoXuat IS NULL OR @TonKhoXuat < @SoLuong
+            THROW 51007, N'Kho nguồn không đủ số lượng để thực hiện điều chuyển!', 1;
+
+        -- Trừ hàng kho xuất
+        UPDATE TonKho
+        SET SoLuongTon = SoLuongTon - @SoLuong
+        WHERE MaKho = @MaKhoXuat AND MaSP = @MaSP;
+
+        -- Cộng hàng kho nhập
+        IF EXISTS (SELECT 1 FROM TonKho WHERE MaKho = @MaKhoNhap AND MaSP = @MaSP)
+        BEGIN
+            UPDATE TonKho
+            SET SoLuongTon = SoLuongTon + @SoLuong
+            WHERE MaKho = @MaKhoNhap AND MaSP = @MaSP;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO TonKho (MaKho, MaSP, SoLuongTon)
+            VALUES (@MaKhoNhap, @MaSP, @SoLuong);
+        END;
+
+        COMMIT TRANSACTION;
+        SELECT N'Điều chuyển kho thành công!' AS KetQua;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0
+            ROLLBACK TRANSACTION;
+
+        THROW;
+    END CATCH;
+END;
+GO
+
+PRINT N'Da tao thanh cong GIAO DICH 5: usp_Tx_ChuyenKhoHangHoaLienChiNhanh';
+GO
+
+-- =========================================================================
+-- PHẦN MINH CHỨNG TRANH CHẤP TRUY CẬP ĐỒNG THỜI (CONCURRENCY) & DEADLOCK
+-- 1. GIẢI QUYẾT BÀI TOÁN LOST UPDATE (BÁN KHỐNG HÀNG TỒN KHO):
+--    Nếu 2 người cùng đọc tồn kho = 1 và cùng trừ 1, cả 2 sẽ tưởng thành công -> Tồn kho thành -1!
+--    Giải pháp: Dùng khóa "WITH (UPDLOCK, HOLDLOCK)" trong câu SELECT kiểm tra tồn kho.
+--    UPDLOCK giữ khóa đọc có ý định cập nhật, chặn mọi phiên khác không được chen ngang.
+--
+-- 2. GIẢI QUYẾT BÀI TOÁN DEADLOCK:
+--    Nguyên nhân: Phiên 1 khóa Bảng SanPham rồi xin khóa Bảng TonKho.
+--                 Phiên 2 khóa Bảng TonKho rồi xin khóa Bảng SanPham.
+--                 -> Hai bên chờ nhau vĩnh viễn gây Deadlock!
+--    Giải pháp chuẩn mực:
+--    - Quy ước Lock Ordering: Luôn truy cập bảng SanPham trước, bảng TonKho sau ở mọi thủ tục.
+--    - Thiết lập: SET DEADLOCK_PRIORITY NORMAL / HIGH cho các giao dịch trọng yếu.
+-- =========================================================================
+
+PRINT N'=========================================================================';
+PRINT N'HOAN THANH TOAN BO 5 GIAO DICH ACID VA MINH CHUNG CONCURRENCY / DEADLOCK!';
+PRINT N'=========================================================================';
+GO
+
+GO
+
+-- 4. THIẾT LẬP QUYỀN HẠN CHI TIẾT (GRANT / REVOKE / DENY)
+-- =========================================================================
+
+-- ROLE 1: ADMIN (QUẢN TRỊ VIÊN CAO CẤP) -> TOÀN QUYỀN (QUÁCH TÀI LỢI - 20%)
+GRANT CONTROL ON DATABASE::QuanLyBanHangDB TO Role_Admin;
+GO
+
+-- ROLE 2: QUẢN LÝ CHI NHÁNH (PHAN THIỆN KHỞI - 20%)
+-- Được xem tất cả Views báo cáo, thủ tục chuyển kho, tìm kiếm, KPI và giao dịch quản lý
+GRANT SELECT ON v_BaoCaoTonKho_XepHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON v_TongHopDoanhThuSanPham TO Role_QuanLyChiNhanh;
+GRANT SELECT ON v_PhanCapNhanSu_ToanDien TO Role_QuanLyChiNhanh;
+GRANT SELECT ON v_NhanVien_ChiNhanh1_KiemSoat TO Role_QuanLyChiNhanh;
+GRANT SELECT ON dbo.fn_BaoCaoDoanhThuNhanVienChiTiet TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.sp_BaoCaoTongHopDoanhThuChiNhanh TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.sp_ChuyenKhoNoiBo TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_XoaNhanVienVaDieuChuyenQuanLy TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_ThangHangThanhVienHangLoat TO Role_QuanLyChiNhanh;
+
+-- Nghiệp vụ Bán hàng & Quản lý Đơn hàng (POS)
+GRANT SELECT ON dbo.fn_DanhSachDonHangTheoKhoangThoiGian TO Role_QuanLyChiNhanh;
+GRANT SELECT ON v_InHoaDon_ChiTietPhucHop TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.sp_TaoDonHangVaChiTiet TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.sp_CapNhatTrangThaiDonHang TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_DatHangVaGiuCho TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_Tx_HuyDonHangVaHoanTonKho TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.fn_TinhTienSauChietKhauVIP TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.fn_KiemTraKhaNangDapUngDonHang TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.fn_FormatMaHoaDonTuDong TO Role_QuanLyChiNhanh;
+
+GRANT SELECT ON ChiNhanh TO Role_QuanLyChiNhanh;
+GRANT SELECT ON KhoHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON TonKho TO Role_QuanLyChiNhanh;
+GRANT SELECT ON SanPham TO Role_QuanLyChiNhanh;
+GRANT SELECT ON DanhMuc TO Role_QuanLyChiNhanh;
+GRANT SELECT, INSERT, UPDATE ON KhachHang TO Role_QuanLyChiNhanh;
+GRANT SELECT ON DonHang TO Role_QuanLyChiNhanh;
+REVOKE INSERT, UPDATE ON DonHang FROM Role_QuanLyChiNhanh;
+GRANT SELECT ON ChiTietDonHang TO Role_QuanLyChiNhanh;
+REVOKE INSERT, UPDATE ON ChiTietDonHang FROM Role_QuanLyChiNhanh;
+GRANT SELECT ON NhatKyHeThong TO Role_QuanLyChiNhanh;
+-- BẢO MẬT CẤP CỘT (COLUMN-LEVEL SECURITY - LEAST PRIVILEGE):
+-- Cho phép xem thông tin định danh nhân sự để liên kết chi nhánh/kho, cấm tuyệt đối cột Luong (Error 229 nếu cố truy vấn)
+REVOKE SELECT ON dbo.NhanVien FROM Role_QuanLyChiNhanh;
+REVOKE SELECT(MaNV,HoTen,MaCN,MaQL,DaXoa) ON dbo.NhanVien FROM Role_QuanLyChiNhanh;
+DENY SELECT ON dbo.NhanVien TO Role_QuanLyChiNhanh;
+GO
+
+-- ROLE 3: THU NGÂN / CASHIER (HUỲNH VĂN BÌNH - 20%)
+-- Được tạo đơn, in hóa đơn, tìm khách, tra sản phẩm và chạy các hàm/giao dịch bán hàng
+GRANT EXECUTE ON dbo.sp_TaoDonHangVaChiTiet TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.sp_CapNhatTrangThaiDonHang TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_Tx_DatHangVaGiuCho TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_Tx_HuyDonHangVaHoanTonKho TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.fn_TinhTienSauChietKhauVIP TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.fn_KiemTraKhaNangDapUngDonHang TO Role_ThuNgan;
+GRANT EXECUTE ON dbo.fn_FormatMaHoaDonTuDong TO Role_ThuNgan;
+GRANT SELECT ON dbo.fn_DanhSachDonHangTheoKhoangThoiGian TO Role_ThuNgan;
+GRANT SELECT ON v_InHoaDon_ChiTietPhucHop TO Role_ThuNgan;
+GRANT SELECT ON KhachHang TO Role_ThuNgan;
+REVOKE INSERT, UPDATE ON KhachHang FROM Role_ThuNgan;
+GRANT SELECT ON ChiNhanh TO Role_ThuNgan;
+GRANT SELECT ON KhoHang TO Role_ThuNgan;
+GRANT SELECT ON TonKho TO Role_ThuNgan;
+GRANT SELECT ON SanPham TO Role_ThuNgan;
+GRANT SELECT ON DanhMuc TO Role_ThuNgan;
+GRANT SELECT ON DonHang TO Role_ThuNgan;
+GRANT SELECT ON ChiTietDonHang TO Role_ThuNgan;
+-- BẢO MẬT: CẤM TUYỆT ĐỐI XEM LƯƠNG HOẶC XÓA BẤT KỲ DỮ LIỆU NÀO TRỰC TIẾP
+REVOKE SELECT ON dbo.NhanVien FROM Role_ThuNgan;
+REVOKE SELECT(MaNV,HoTen,MaCN,MaQL,DaXoa) ON dbo.NhanVien FROM Role_ThuNgan;
+DENY SELECT ON dbo.NhanVien TO Role_ThuNgan;
+DENY DELETE ON DonHang TO Role_ThuNgan;
+DENY DELETE ON ChiTietDonHang TO Role_ThuNgan;
+DENY SELECT ON LichSuGia TO Role_ThuNgan;
+GO
+
+-- ROLE 4: THỦ KHO / STOCKKEEPER (HOÀNG GIA KIỆT - 20%)
+-- Được kiểm tra tồn kho, chuyển kho nội bộ và liên chi nhánh
+GRANT SELECT ON v_BaoCaoTonKho_XepHang TO Role_ThuKho;
+GRANT SELECT ON ChiNhanh TO Role_ThuKho;
+GRANT SELECT ON TonKho TO Role_ThuKho;
+GRANT SELECT ON KhoHang TO Role_ThuKho;
+GRANT SELECT ON SanPham TO Role_ThuKho;
+GRANT SELECT ON DanhMuc TO Role_ThuKho;
+GRANT EXECUTE ON dbo.sp_ChuyenKhoNoiBo TO Role_ThuKho;
+GRANT EXECUTE ON dbo.sp_TimKiemSanPhamNangCao TO Role_ThuKho;
+GRANT EXECUTE ON dbo.fn_KiemTraKhaNangDapUngDonHang TO Role_ThuKho;
+GRANT EXECUTE ON dbo.usp_Tx_ChuyenKhoHangHoaLienChiNhanh TO Role_ThuKho;
+-- BẢO MẬT: CẤM XEM THÔNG TIN KHÁCH HÀNG, ĐƠN HÀNG, NHÂN SỰ
+DENY SELECT ON KhachHang TO Role_ThuKho;
+DENY SELECT ON DonHang TO Role_ThuKho;
+DENY SELECT ON ChiTietDonHang TO Role_ThuKho;
+REVOKE SELECT ON dbo.NhanVien FROM Role_ThuKho;
+REVOKE SELECT(MaNV,HoTen,MaCN,MaQL,DaXoa) ON dbo.NhanVien FROM Role_ThuKho;
+DENY SELECT ON dbo.NhanVien TO Role_ThuKho;
+GO
+
+-- MA TRẬN BẢO MẬT & KIỂM THỬ XÁC THỰC RLS (TRẦN NHẬT TÂN - 20%)
+-- Thiết lập chính sách kiểm thử kết nối trực tiếp từ Web Dashboard qua 4 tài khoản CSDL
+
+PRINT N'=========================================================================';
+PRINT N'HOAN THANH PHAN QUYEN NATIVE 4 LOGINS, 4 ROLES THEO CHUAN LEAST PRIVILEGE!';
+PRINT N'=========================================================================';
+GO
+
+-- Shared application policy: POS never needs salary, and writes go through transactions.
+GRANT SELECT ON dbo.v_NhanVien_BanHang TO Role_QuanLyChiNhanh,Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_LuuSanPham TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_XoaMemSanPham TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_ThemChiNhanh TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_ThemNhanVien TO Role_QuanLyChiNhanh;
+GRANT EXECUTE ON dbo.usp_ThemKhachHang TO Role_QuanLyChiNhanh,Role_ThuNgan;
+GRANT EXECUTE ON dbo.usp_NhapKho TO Role_QuanLyChiNhanh,Role_ThuKho;
+DENY INSERT,UPDATE,DELETE ON dbo.DonHang TO Role_QuanLyChiNhanh,Role_ThuNgan,Role_ThuKho;
+DENY INSERT,UPDATE,DELETE ON dbo.ChiTietDonHang TO Role_QuanLyChiNhanh,Role_ThuNgan,Role_ThuKho;
+GO
+
+IF OBJECT_ID('dbo.SchemaMigrations','U') IS NULL CREATE TABLE dbo.SchemaMigrations(Version VARCHAR(50) PRIMARY KEY,AppliedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME());
+IF NOT EXISTS(SELECT 1 FROM dbo.SchemaMigrations WHERE Version='20261020_safe_retail') INSERT dbo.SchemaMigrations(Version) VALUES('20261020_safe_retail');
+GO

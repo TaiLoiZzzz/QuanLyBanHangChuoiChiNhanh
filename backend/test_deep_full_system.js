@@ -1,3 +1,5 @@
+
+if (process.env.RUN_LEGACY_TESTS !== 'true' || !process.env.DB_NAME?.startsWith('DBMSTest_')) throw new Error('Legacy diagnostics require an isolated DBMSTest_* database. Use npm run test:integration for supported regression tests.');
 /**
  * =========================================================================
  * BỘ KIỂM THỬ TOÀN DIỆN CHUYÊN SÂU BACKEND VÀ CSDL (FULL-SYSTEM DEEP AUDIT)

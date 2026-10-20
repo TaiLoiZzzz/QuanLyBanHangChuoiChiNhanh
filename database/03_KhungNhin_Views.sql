@@ -149,9 +149,9 @@ SELECT
     kh.MaKH,
     kh.HoTen AS TenKhachHang,
     kh.SoDT AS SoDTKhachHang,
-    CASE kh.LoaiKH
-        WHEN 1 THEN N'Khách VIP (Giảm 10%)'
-        WHEN 2 THEN N'Khách Kim Cương (Giảm 15%)'
+    CASE dh.TiLeChietKhau
+        WHEN 0.10 THEN N'Khách VIP (Giảm 10%)'
+        WHEN 0.15 THEN N'Khách Kim Cương (Giảm 15%)'
         ELSE N'Khách Thường (Không giảm)'
     END AS HangThanhVien,
     -- Thông tin nhân viên & Kho xuất
@@ -165,13 +165,13 @@ SELECT
     ct.DonGiaBan,
     ct.ThanhTien AS TienGoc,
     -- Tính tiền chiết khấu theo loại khách hàng
-    ROUND(ct.ThanhTien * (CASE kh.LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END), 0) AS TienChietKhau,
+    ROUND(ct.ThanhTien * dh.TiLeChietKhau, 0) AS TienChietKhau,
     -- Tính tiền sau chiết khấu
-    ROUND(ct.ThanhTien * (1 - (CASE kh.LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END)), 0) AS TienSauChietKhau,
+    ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau), 0) AS TienSauChietKhau,
     -- Thuế VAT 8%
-    ROUND(ct.ThanhTien * (1 - (CASE kh.LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END)) * 0.08, 0) AS ThueVAT8Pct,
+    ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau) * dh.TiLeVAT, 0) AS ThueVAT8Pct,
     -- Thành tiền cuối cùng đã bao gồm VAT
-    ROUND(ct.ThanhTien * (1 - (CASE kh.LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END)) * 1.08, 0) AS TongThanhToanCuoiCung
+    ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau), 0) + ROUND(ct.ThanhTien * (1 - dh.TiLeChietKhau) * dh.TiLeVAT, 0) AS TongThanhToanCuoiCung
 FROM DonHang dh
 INNER JOIN KhachHang kh ON dh.MaKH = kh.MaKH
 INNER JOIN NhanVien nv ON dh.MaNV = nv.MaNV
@@ -198,8 +198,10 @@ SELECT
     ct.MaSP,
     COUNT_BIG(*) AS SoLanXuatHienTrongDon,
     SUM(ct.SoLuong) AS TongSoLuongBan,
-    SUM(ct.ThanhTien) AS TongDoanhThuThuVe
+    SUM(ISNULL(ROUND(ct.ThanhTien * (1-dh.TiLeChietKhau),0),0)) AS TongDoanhThuThuVe
 FROM dbo.ChiTietDonHang ct
+INNER JOIN dbo.DonHang dh ON dh.MaDH=ct.MaDH
+WHERE dh.TrangThai=3
 GROUP BY ct.MaSP;
 GO
 
@@ -214,4 +216,12 @@ GO
 PRINT N'=========================================================================';
 PRINT N'HOAN THANH TOAN BO 5 VIEW CHUYEN SAU DAT CHUAN CUA CO THE!';
 PRINT N'=========================================================================';
+GO
+
+-- POS directory: identity and organization only, never salary.
+CREATE OR ALTER VIEW dbo.v_NhanVien_BanHang AS
+SELECT nv.MaNV,nv.HoTen,nv.MaCN,cn.TenCN,nv.MaQL,ql.HoTen AS TenNguoiQuanLy,nv.DaXoa
+FROM dbo.NhanVien nv JOIN dbo.ChiNhanh cn ON cn.MaCN=nv.MaCN
+LEFT JOIN dbo.NhanVien ql ON ql.MaNV=nv.MaQL
+WHERE nv.DaXoa=0;
 GO

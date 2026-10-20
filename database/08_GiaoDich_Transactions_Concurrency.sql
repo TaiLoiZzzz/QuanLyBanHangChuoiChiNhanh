@@ -21,54 +21,14 @@ GO
 -- Đảm bảo tính nguyên tử: Tạo đơn hàng + Chi tiết đơn hàng + Trừ kho + Cập nhật tổng tiền
 -- =========================================================================
 CREATE OR ALTER PROCEDURE dbo.usp_Tx_DatHangVaGiuCho
-    @MaKH INT,
-    @MaNV INT,
-    @MaKhoXuat INT,
-    @MaSP INT,
-    @SoLuong INT,
-    @DonGiaBan DECIMAL(12,2)
-AS
+ @MaKH INT,@MaNV INT,@MaKhoXuat INT,@MaSP INT,@SoLuong INT,@DonGiaBan DECIMAL(12,2) AS
 BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        -- Khóa dòng dữ liệu tồn kho bằng UPDLOCK + HOLDLOCK chống Lost Update
-        DECLARE @TonHienTai INT;
-        SELECT @TonHienTai = SoLuongTon
-        FROM TonKho WITH (UPDLOCK, HOLDLOCK)
-        WHERE MaKho = @MaKhoXuat AND MaSP = @MaSP;
-
-        IF @TonHienTai IS NULL OR @TonHienTai < @SoLuong
-            THROW 51001, N'Giao dịch thất bại: Hàng trong kho không đủ để giữ chỗ!', 1;
-
-        -- Tạo Header đơn hàng với Tổng tiền tính toán trực tiếp
-        DECLARE @TongTien DECIMAL(14,2) = @SoLuong * @DonGiaBan;
-
-        INSERT INTO DonHang (MaKH, MaNV, MaKhoXuat, NgayDat, TrangThai, TongTien)
-        VALUES (@MaKH, @MaNV, @MaKhoXuat, GETDATE(), 0, @TongTien);
-
-        DECLARE @NewMaDH INT = SCOPE_IDENTITY();
-
-        -- Tạo Chi tiết đơn hàng (Trigger 1 sẽ tự xử lý đồng bộ)
-        INSERT INTO ChiTietDonHang (MaDH, MaSP, SoLuong, DonGiaBan)
-        VALUES (@NewMaDH, @MaSP, @SoLuong, @DonGiaBan);
-
-        COMMIT TRANSACTION;
-        SELECT N'Đặt hàng và giữ chỗ kho thành công!' AS KetQua, @NewMaDH AS MaDH;
-    END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0
-            ROLLBACK TRANSACTION;
-
-        DECLARE @Msg NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@Msg, 16, 1);
-    END CATCH;
+ SET NOCOUNT ON;
+ -- Reuse the same validated UPDLOCK + HOLDLOCK transaction as normal checkout.
+ DECLARE @Id INT;
+ EXEC dbo.sp_TaoDonHangVaChiTiet @MaKH,@MaNV,@MaKhoXuat,@MaSP,@SoLuong,@DonGiaBan,@Id OUTPUT;
 END;
 GO
-
 PRINT N'Da tao thanh cong GIAO DICH 1: usp_Tx_DatHangVaGiuCho';
 GO
 
@@ -77,64 +37,23 @@ GO
 -- PHỤ TRÁCH THỰC HIỆN: PHAN THIỆN KHỞI (20%)
 -- Nghiệp vụ: Chuyển trạng thái đơn sang 4 (Đã hủy) và hoàn trả lại số lượng cho toàn bộ mặt hàng
 -- =========================================================================
-CREATE OR ALTER PROCEDURE dbo.usp_Tx_HuyDonHangVaHoanTonKho
-    @MaDH INT,
-    @LyDoHuy NVARCHAR(200)
-AS
+CREATE OR ALTER PROCEDURE dbo.usp_Tx_HuyDonHangVaHoanTonKho @MaDH INT,@LyDoHuy NVARCHAR(200) AS
 BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON;
-
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        DECLARE @TrangThaiHienTai TINYINT, @MaKho INT;
-        SELECT @TrangThaiHienTai = TrangThai, @MaKho = MaKhoXuat 
-        FROM DonHang WITH (UPDLOCK, ROWLOCK)
-        WHERE MaDH = @MaDH;
-
-        IF @TrangThaiHienTai IS NULL
-            THROW 51002, N'Đơn hàng không tồn tại!', 1;
-
-        IF @TrangThaiHienTai = 3
-            THROW 51003, N'Không thể hủy đơn hàng đã giao thành công!', 1;
-
-        IF @TrangThaiHienTai = 4
-            THROW 51004, N'Đơn hàng này đã được hủy trước đó!', 1;
-
-        -- Hoàn trả lại số lượng tồn kho chính xác theo từng sản phẩm (Group by tránh trùng lặp)
-        UPDATE tk
-        SET tk.SoLuongTon = tk.SoLuongTon + del.TongSoLuongHoan
-        FROM TonKho tk
-        INNER JOIN (
-            SELECT ct.MaSP, SUM(ct.SoLuong) AS TongSoLuongHoan
-            FROM ChiTietDonHang ct
-            WHERE ct.MaDH = @MaDH
-            GROUP BY ct.MaSP
-        ) del ON tk.MaSP = del.MaSP AND tk.MaKho = @MaKho;
-
-        -- Cập nhật trạng thái đơn hàng sang 4 (Đã hủy)
-        UPDATE DonHang
-        SET TrangThai = 4
-        WHERE MaDH = @MaDH;
-
-        -- Ghi log hủy đơn vào hệ thống
-        INSERT INTO NhatKyHeThong (HanhDong, NoiDung, ThoiGian, NguoiThucHien)
-        VALUES (N'HUY_DON_HANG', N'Hủy đơn ' + CAST(@MaDH AS NVARCHAR(10)) + N'. Lý do: ' + @LyDoHuy, GETDATE(), SUSER_SNAME());
-
-        COMMIT TRANSACTION;
-        SELECT N'Hủy đơn hàng và hoàn tồn kho thành công!' AS KetQua, @MaDH AS MaDH;
-    END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0
-            ROLLBACK TRANSACTION;
-
-        DECLARE @Msg NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@Msg, 16, 1);
-    END CATCH;
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  DECLARE @State TINYINT;
+  SELECT @State=TrangThai FROM dbo.DonHang WITH(UPDLOCK,HOLDLOCK) WHERE MaDH=@MaDH;
+  IF @State IS NULL THROW 50404,N'Đơn hàng không tồn tại.',1;
+  IF @State IN(3,4) THROW 51207,N'Đơn đã giao/hủy không thể hủy lại.',1;
+  -- The order trigger is the single owner of stock refund, for both cancellation APIs.
+  UPDATE dbo.DonHang SET TrangThai=4 WHERE MaDH=@MaDH;
+  INSERT dbo.NhatKyHeThong(HanhDong,NoiDung,NguoiThucHien)
+   VALUES(N'HUY_DON_HANG',CONCAT(N'Hủy đơn ',@MaDH,N': ',@LyDoHuy),SUSER_SNAME());
+  COMMIT; SELECT N'Hủy đơn và hoàn kho thành công.' AS KetQua,@MaDH AS MaDH;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
 END;
 GO
-
 PRINT N'Da tao thanh cong GIAO DICH 2: usp_Tx_HuyDonHangVaHoanTonKho';
 GO
 
@@ -160,6 +79,14 @@ BEGIN
         IF NOT EXISTS (SELECT 1 FROM NhanVien WHERE MaNV = @MaQLThayThe AND DaXoa = 0)
             THROW 51006, N'Quản lý thay thế không hợp lệ!', 1;
 
+        IF @MaNVCantXoa=@MaQLThayThe THROW 51208,N'Không thể tự thay thế chính mình.',1;
+        DECLARE @Cycle BIT=0;
+        ;WITH Descendants AS (
+          SELECT MaNV FROM dbo.NhanVien WHERE MaQL=@MaNVCantXoa
+          UNION ALL SELECT n.MaNV FROM dbo.NhanVien n JOIN Descendants d ON n.MaQL=d.MaNV
+        ) SELECT @Cycle=1 FROM Descendants WHERE MaNV=@MaQLThayThe OPTION(MAXRECURSION 100);
+        IF @Cycle=1 THROW 51209,N'Không thể chọn cấp dưới làm quản lý thay thế (vòng lặp nhân sự).',1;
+
         -- 1. Điều chuyển toàn bộ nhân viên cấp dưới sang quản lý mới
         UPDATE NhanVien
         SET MaQL = @MaQLThayThe
@@ -177,8 +104,7 @@ BEGIN
         IF XACT_STATE() <> 0
             ROLLBACK TRANSACTION;
 
-        DECLARE @Msg NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@Msg, 16, 1);
+        THROW;
     END CATCH;
 END;
 GO
@@ -226,8 +152,7 @@ BEGIN
         IF XACT_STATE() <> 0
             ROLLBACK TRANSACTION;
 
-        DECLARE @Msg NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@Msg, 16, 1);
+        THROW;
     END CATCH;
 END;
 GO
@@ -252,7 +177,7 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        IF @SoLuong <= 0
+        IF @SoLuong IS NULL OR @SoLuong <= 0
             THROW 51005, N'Số lượng điều chuyển phải lớn hơn 0!', 1;
 
         IF @MaKhoXuat = @MaKhoNhap
@@ -323,8 +248,7 @@ BEGIN
         IF XACT_STATE() <> 0
             ROLLBACK TRANSACTION;
 
-        DECLARE @Msg NVARCHAR(4000) = ERROR_MESSAGE();
-        RAISERROR(@Msg, 16, 1);
+        THROW;
     END CATCH;
 END;
 GO

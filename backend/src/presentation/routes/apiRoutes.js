@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+router.param('id', (req,res,next,id) => /^[1-9]\d*$/.test(id) ? next() : res.status(422).json({success:false,error:'Mã không hợp lệ.'}));
+router.use(require('../middlewares/validateInput'));
 
 // Repositories
 const SqlServerOrderRepository = require('../../infrastructure/repositories/SqlServerOrderRepository');
@@ -55,6 +57,8 @@ const masterController = new MasterDataController(masterRepo);
 // 1. AUTH ROUTE (4 Native SQL Server Roles)
 // =========================================================================
 router.post('/auth/login', (req, res, next) => authController.login(req, res, next));
+router.get('/auth/me', (req, res) => authController.me(req, res));
+router.post('/auth/logout', (req, res) => authController.logout(req, res));
 
 // =========================================================================
 // 2. MASTER DATA ROUTES (Chi nhánh, Kho hàng, Danh mục, Khách hàng, Nhân viên, Logs)
@@ -151,5 +155,17 @@ router.post('/staff/reorganize', (req, res, next) => reportController.reorganize
 
 // Gọi Giao dịch ACID Tx 4: usp_Tx_ThangHangThanhVienHangLoat
 router.post('/customers/batch-promote', (req, res, next) => reportController.batchPromote(req, res, next));
+
+
+router.post('/inventory/receipts', async (req, res, next) => {
+  try {
+    const { maKho, maSP, soLuong } = req.body;
+    if (![maKho,maSP,soLuong].every(n => Number.isSafeInteger(n) && n > 0)) return res.status(422).json({ success: false, error: 'Thông tin nhập kho không hợp lệ.' });
+    const sql = require('mssql');
+    const pool = await require('../../infrastructure/database/SqlServerConnectionFactory').getPool(req.userContext.user, req.userContext.password);
+    const result = await pool.request().input('MaKho',sql.Int,maKho).input('MaSP',sql.Int,maSP).input('SoLuong',sql.Int,soLuong).execute('dbo.usp_NhapKho');
+    res.status(201).json({ success: true, receipt: result.recordset[0] });
+  } catch (err) { next(err); }
+});
 
 module.exports = router;

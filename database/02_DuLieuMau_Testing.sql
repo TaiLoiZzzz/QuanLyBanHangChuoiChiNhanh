@@ -122,54 +122,36 @@ GO
 -- Nghiệp vụ: Phục vụ đo đạc chênh lệch hiệu năng trước và sau khi đánh 5 Index (Bước 6)
 -- Kỹ thuật: Sinh hàng loạt N đơn hàng ngẫu nhiên với giao dịch theo lô (Batch Transaction)
 -- =========================================================================
-CREATE OR ALTER PROCEDURE dbo.sp_SinhDuLieuMau_TestTai
-    @SoLuongDonHang INT = 5000
-AS
+CREATE OR ALTER PROCEDURE dbo.sp_SinhDuLieuMau_TestTai @SoLuongDonHang INT=5000 AS
 BEGIN
-    SET NOCOUNT ON;
-    PRINT N'Bắt đầu sinh ' + CAST(@SoLuongDonHang AS NVARCHAR(10)) + N' đơn hàng kiểm thử tải...';
-
-    DECLARE @i INT = 1;
-    DECLARE @MaKH INT, @MaNV INT, @MaKho INT, @MaSP INT, @SoLuong INT, @DonGia DECIMAL(12,2);
-    DECLARE @NgayDat DATETIME, @TrangThai TINYINT, @MaDH_Moi INT;
-
-    BEGIN TRANSACTION;
-
-    WHILE @i <= @SoLuongDonHang
-    BEGIN
-        -- Random ngẫu nhiên các thông số
-        SET @MaKH = (@i % 2) + 1; -- MaKH: 1 hoặc 2
-        SET @MaNV = (@i % 3) + 1; -- MaNV: 1, 2, 3
-        SET @MaKho = (@i % 2) + 1; -- MaKho: 1 hoặc 2
-        SET @TrangThai = (@i % 4); -- 0: Mới, 1: Xác nhận, 2: Giao, 3: Xong
-        SET @NgayDat = DATEADD(MINUTE, -(@i * 7), GETDATE()); -- Rải đều thời gian về quá khứ
-
-        INSERT INTO DonHang (MaKH, MaNV, MaKhoXuat, NgayDat, TrangThai, TongTien)
-        VALUES (@MaKH, @MaNV, @MaKho, @NgayDat, @TrangThai, 0);
-
-        SET @MaDH_Moi = SCOPE_IDENTITY();
-
-        -- Sinh 2 chi tiết đơn hàng cho mỗi đơn
-        SET @MaSP = ((@i * 3) % 4) + 1;
-        SET @SoLuong = (@i % 3) + 1;
-        SELECT @DonGia = GiaBanHienTai FROM SanPham WHERE MaSP = @MaSP;
-
-        -- Tạm thời vô hiệu hóa trigger trừ kho để tránh cạn kho khi sinh dữ liệu kiểm thử tải
-        INSERT INTO ChiTietDonHang (MaDH, MaSP, SoLuong, DonGiaBan)
-        VALUES (@MaDH_Moi, @MaSP, @SoLuong, @DonGia);
-
-        -- Cập nhật tổng tiền đơn hàng
-        UPDATE DonHang 
-        SET TongTien = @SoLuong * @DonGia
-        WHERE MaDH = @MaDH_Moi;
-
-        SET @i = @i + 1;
-    END;
-
-    COMMIT TRANSACTION;
-
-    PRINT N'Đã sinh thành công ' + CAST(@SoLuongDonHang AS NVARCHAR(10)) + N' đơn hàng để phục vụ chụp ảnh Actual Execution Plan!';
+ SET NOCOUNT ON; SET XACT_ABORT ON;
+ IF DB_NAME() NOT LIKE 'DBMSTest[_]%' AND DB_NAME() NOT LIKE '%[_]Benchmark'
+  THROW 51301,N'Chỉ sinh tải trong CSDL DBMSTest_* hoặc *_Benchmark riêng biệt.',1;
+ IF @SoLuongDonHang IS NULL OR @SoLuongDonHang<1 OR @SoLuongDonHang>100000
+  THROW 51302,N'Số đơn phải trong 1..100000.',1;
+ BEGIN TRY
+  BEGIN TRANSACTION;
+  -- Controlled replenishment in this disposable fixture; never disable production triggers.
+  UPDATE dbo.TonKho SET SoLuongTon=SoLuongTon+@SoLuongDonHang*3;
+  DECLARE @i INT=1,@Id INT,@KH INT,@SP INT,@Qty INT,@Price DECIMAL(12,2),@State INT,@Discount DECIMAL(5,4);
+  WHILE @i<=@SoLuongDonHang
+  BEGIN
+   SELECT @KH=(@i%2)+1,@SP=(@i%4)+1,@Qty=(@i%3)+1,@State=@i%4;
+   SELECT @Price=GiaBanHienTai FROM dbo.SanPham WHERE MaSP=@SP AND DaXoa=0;
+   SELECT @Discount=CASE LoaiKH WHEN 1 THEN 0.10 WHEN 2 THEN 0.15 ELSE 0 END FROM dbo.KhachHang WHERE MaKH=@KH;
+   INSERT dbo.DonHang(MaKH,MaNV,MaKhoXuat,NgayDat,TiLeChietKhau)
+    VALUES(@KH,2,(@i%2)+1,DATEADD(MINUTE,-@i*7,GETDATE()),@Discount);
+   SET @Id=SCOPE_IDENTITY();
+   INSERT dbo.ChiTietDonHang(MaDH,MaSP,SoLuong,DonGiaBan) VALUES(@Id,@SP,@Qty,@Price);
+   IF @State>=1 UPDATE dbo.DonHang SET TrangThai=1 WHERE MaDH=@Id;
+   IF @State>=2 UPDATE dbo.DonHang SET TrangThai=2 WHERE MaDH=@Id;
+   IF @State>=3 UPDATE dbo.DonHang SET TrangThai=3 WHERE MaDH=@Id;
+   SET @i+=1;
+  END;
+  COMMIT; SELECT @SoLuongDonHang AS GeneratedOrders;
+ END TRY BEGIN CATCH IF XACT_STATE()<>0 ROLLBACK; THROW; END CATCH;
 END;
+
 GO
 
 PRINT N'=========================================================================';

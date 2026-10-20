@@ -7,14 +7,19 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "test": "node test_deep_full_system.js",
-    "test:business": "node test_deep_business.js",
-    "test:system": "node test_deep_full_system.js"
+    "test": "node --test test/unit.test.cjs",
+    "test:business": "node test/regression.cjs",
+    "test:system": "node test/regression.cjs",
+    "test:integration": "node test/regression.cjs",
+    "test:full": "node test/regression.cjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "mssql": "^11.0.1"
+    "mssql": "^12.7.10"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }

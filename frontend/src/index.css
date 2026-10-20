@@ -750,3 +750,22 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* Only the document is printed, not the dashboard or modal controls. */
+@media print {
+  body * { visibility: hidden; }
+  .invoice-sheet, .invoice-sheet * { visibility: visible; }
+  .invoice-sheet { position: absolute; inset: 0; width: 100%; box-shadow: none; border: 0; }
+  .modal-overlay { position: absolute; display: block; background: none; backdrop-filter: none; }
+  .modal-content { max-width: none !important; max-height: none; overflow: visible; box-shadow: none; }
+  .modal-body { overflow: visible; max-height: none; }
+}
+@media (max-width: 800px) {
+  .app-container { flex-direction: column; }
+  .sidebar { width: 100%; min-width: 0; position: static; height: auto; }
+  .sidebar-footer { display: none; }
+  .main-wrapper { margin-left: 0; width: 100%; }
+  .topbar { flex-wrap: wrap; height: auto; gap: 10px; padding: 16px; }
+  .content-body { padding: 16px; }
+  .modal-content { width: calc(100vw - 24px); }
+}

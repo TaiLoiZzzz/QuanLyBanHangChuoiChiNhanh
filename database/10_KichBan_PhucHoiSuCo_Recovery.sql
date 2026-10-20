@@ -1,120 +1,38 @@
--- =========================================================================
--- HỌC PHẦN: HỆ QUẢN TRỊ CƠ SỞ DỮ LIỆU (DBMS330284) - FIT, HCMUTE
--- GIẢNG VIÊN: TS. PHAN THỊ THỂ
--- ĐỀ TÀI: QUẢN LÝ BÁN HÀNG & CHUỖI TỒN KHO ĐA CHI NHÁNH
--- BƯỚC 10: KỊCH BẢN PHỤC HỒI SỰ CỐ TOÀN DIỆN (POINT-IN-TIME DISASTER RECOVERY)
--- NHÓM SINH VIÊN THỰC HIỆN: ĐỒNG ĐỀU 20% MỖI THÀNH VIÊN
--- QUÁCH TÀI LỢI (20%), PHAN THIỆN KHỞI (20%), HUỲNH VĂN BÌNH (20%), HOÀNG GIA KIỆT (20%), TRẦN NHẬT TÂN (20%)
--- =========================================================================
-
+-- Run only against a dedicated disposable copy, supplied by the recovery CLI.
+-- Timestamp variables stay in the same session/batch through backup and restore.
+USE [$(RECOVERY_DB)];
+SET NOCOUNT ON; SET XACT_ABORT ON;
+SET ANSI_NULLS ON; SET QUOTED_IDENTIFIER ON; SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON; SET ARITHABORT ON; SET CONCAT_NULL_YIELDS_NULL ON; SET NUMERIC_ROUNDABORT OFF;
+DECLARE @Db SYSNAME=DB_NAME();
+IF @Db NOT LIKE 'DBMSTest[_]%' AND @Db NOT LIKE '%[_]RecoveryDemo'
+ THROW 51303,N'Recovery demo chỉ được chạy trên CSDL DBMSTest_* hoặc *_RecoveryDemo.',1;
+DECLARE @Dir NVARCHAR(1000)=CONVERT(NVARCHAR(1000),SERVERPROPERTY('InstanceDefaultBackupPath'));
+IF @Dir IS NULL SET @Dir=N'/var/opt/mssql/data/';
+IF RIGHT(@Dir,1) NOT IN('/','\') SET @Dir+=CASE WHEN @@VERSION LIKE '%Linux%' THEN '/' ELSE '\' END;
+DECLARE @Full NVARCHAR(1200)=@Dir+@Db+N'_Full.bak',@Log NVARCHAR(1200)=@Dir+@Db+N'_Log.trn',@Tail NVARCHAR(1200)=@Dir+@Db+N'_Tail.trn';
+ALTER DATABASE [$(RECOVERY_DB)] SET RECOVERY FULL;
+BACKUP DATABASE @Db TO DISK=@Full WITH INIT,CHECKSUM;
+DECLARE @Id INT;
+EXEC dbo.sp_TaoDonHangVaChiTiet 1,2,1,2,1,350000,@Id OUTPUT;
+BACKUP LOG @Db TO DISK=@Log WITH INIT,CHECKSUM;
+EXEC dbo.sp_TaoDonHangVaChiTiet 2,2,1,3,1,450000,@Id OUTPUT;
+-- Allow the preceding commit to be strictly before the datetime STOPAT boundary.
+WAITFOR DELAY '00:00:01';
+DECLARE @Safe DATETIME=GETDATE(),@Orders INT=(SELECT COUNT(*) FROM dbo.DonHang),@Lines INT=(SELECT COUNT(*) FROM dbo.ChiTietDonHang),@Total DECIMAL(38,2)=(SELECT SUM(TongTien) FROM dbo.DonHang);
+WAITFOR DELAY '00:00:02';
+DELETE ct FROM dbo.ChiTietDonHang ct JOIN dbo.DonHang dh ON dh.MaDH=ct.MaDH WHERE dh.TrangThai IN(0,1,2);
 USE master;
-GO
-
--- =========================================================================
--- BỐI CẢNH THỬ NGHIỆM:
--- Hệ thống đang hoạt động ở chế độ RECOVERY FULL.
--- Kịch bản giả lập thảm họa:
--- 1. 09:00 AM: Hệ thống thực hiện FULL BACKUP định kỳ đầu ngày.
--- 2. 09:30 AM: Khách hàng phát sinh giao dịch đặt đơn hàng MaDH = 2.
--- 3. 10:00 AM: Hệ thống thực hiện TRANSACTION LOG BACKUP định kỳ lần 1.
--- 4. 10:15 AM: Khách hàng tiếp tục đặt thêm đơn hàng MaDH = 3.
--- 5. 10:20:00 AM: THẢM HỌA XẢY RA: Một nhân viên kỹ thuật gõ nhầm lệnh
---    DELETE FROM ChiTietDonHang; làm mất sạch toàn bộ dữ liệu hóa đơn!
--- 6. MỤC TIÊU CỦA DBA: Cứu sống hệ thống quay về đúng thời điểm 10:19:59 AM
---    (trước thảm họa đúng 1 giây), không làm mất bất kỳ đơn hàng hợp lệ nào!
--- =========================================================================
-
--- BƯỚC 1: XÁC NHẬN CHẾ ĐỘ RECOVERY FULL
-ALTER DATABASE QuanLyBanHangDB SET RECOVERY FULL;
-GO
-
--- BƯỚC 2: TẠO FULL BACKUP BAN ĐẦU
-BACKUP DATABASE QuanLyBanHangDB 
-TO DISK = '/var/opt/mssql/data/QuanLyBanHangDB_Full.bak'
-WITH FORMAT, INIT, NAME = N'QuanLyBanHangDB-Full Database Backup', SKIP, NOREWIND, NOUNLOAD, STATS = 10;
-GO
-
-PRINT N'DA TAO THANH CONG BAN FULL BACKUP BAN DAU!';
-GO
-
--- BƯỚC 3: PHÁT SINH GIAO DỊCH 1 (TẠO ĐƠN HÀNG HỢP LỆ)
-USE QuanLyBanHangDB;
-GO
-
-INSERT INTO DonHang (MaKH, MaNV, MaKhoXuat, NgayDat, TrangThai, TongTien)
-VALUES (1, 2, 1, GETDATE(), 1, 350000);
-DECLARE @MaDHMoi1 INT = SCOPE_IDENTITY();
-INSERT INTO ChiTietDonHang (MaDH, MaSP, SoLuong, DonGiaBan)
-VALUES (@MaDHMoi1, 2, 1, 350000);
-GO
-
--- BƯỚC 4: TẠO TRANSACTION LOG BACKUP LẦN 1
-BACKUP LOG QuanLyBanHangDB 
-TO DISK = '/var/opt/mssql/data/QuanLyBanHangDB_Log1.trn'
-WITH FORMAT, INIT, NAME = N'QuanLyBanHangDB-Log Backup 1', NOREWIND, NOUNLOAD, STATS = 10;
-GO
-
-PRINT N'DA TAO THANH CONG BAN LOG BACKUP LAN 1!';
-GO
-
--- BƯỚC 5: PHÁT SINH TIẾP GIAO DỊCH 2 (TRƯỚC KHI THẢM HỌA XẢY RA)
-USE QuanLyBanHangDB;
-GO
-
-INSERT INTO DonHang (MaKH, MaNV, MaKhoXuat, NgayDat, TrangThai, TongTien)
-VALUES (2, 2, 1, GETDATE(), 1, 450000);
-DECLARE @MaDHMoi2 INT = SCOPE_IDENTITY();
-INSERT INTO ChiTietDonHang (MaDH, MaSP, SoLuong, DonGiaBan)
-VALUES (@MaDHMoi2, 3, 1, 450000);
-GO
-
--- LƯU LẠI THỜI ĐIỂM CHUẨN XÁC TRƯỚC KHI XẢY RA SỰ CỐ
-DECLARE @ThoiDiemAnToan DATETIME = GETDATE();
-PRINT N'THỜI ĐIỂM AN TOÀN TRƯỚC THẢM HỌA LÀ: ' + CONVERT(VARCHAR(30), @ThoiDiemAnToan, 121);
-GO
-
--- BƯỚC 6: GIẢ LẬP THẢM HỌA (DISASTER SIMULATION)
--- Kỹ thuật viên lỡ tay xóa toàn bộ chi tiết đơn hàng
-WAITFOR DELAY '00:00:02'; -- Chờ 2 giây để tạo khoảng cách thời gian rõ rệt
-DELETE FROM ChiTietDonHang;
-PRINT N'CẢNH BÁO: TOÀN BỘ BẢNG ChiTietDonHang ĐÃ BỊ XÓA NHẦM!';
-GO
-
--- =========================================================================
--- BƯỚC 7: QUY TRÌNH CỨU HỘ & KHÔI PHỤC POINT-IN-TIME CỦA DBA
--- =========================================================================
-
-USE master;
-GO
-
--- 7.1. SAO LƯU ĐUÔI NHẬT KÝ (TAIL-LOG BACKUP) ĐỂ CỨU DỮ LIỆU ĐANG NẰM TRONG LOG BUFFER
-BACKUP LOG QuanLyBanHangDB 
-TO DISK = '/var/opt/mssql/data/QuanLyBanHangDB_TailLog.trn'
-WITH NORECOVERY, FORMAT, INIT, NAME = N'QuanLyBanHangDB-Tail Log Backup';
-GO
-
-PRINT N'DA SAO LUU THANH CONG TAIL-LOG BACKUP VA DUA CSDL VE TRANG THAI RESTORING!';
-GO
-
--- 7.2. PHỤC HỒI BẢN FULL BACKUP (GIỮ CHẾ ĐỘ NORECOVERY ĐỂ CHỜ ÁP LOG)
-RESTORE DATABASE QuanLyBanHangDB 
-FROM DISK = '/var/opt/mssql/data/QuanLyBanHangDB_Full.bak'
-WITH NORECOVERY, REPLACE;
-GO
-
--- 7.3. PHỤC HỒI BẢN LOG BACKUP 1
-RESTORE LOG QuanLyBanHangDB 
-FROM DISK = '/var/opt/mssql/data/QuanLyBanHangDB_Log1.trn'
-WITH NORECOVERY;
-GO
-
--- 7.4. PHỤC HỒI BẢN TAIL-LOG KÈM LỆNH DỪNG THỜI GIAN "STOPAT" TRƯỚC SỰ CỐ VÀ ĐƯA CSDL VỀ ONLINE
-RESTORE LOG QuanLyBanHangDB 
-FROM DISK = '/var/opt/mssql/data/QuanLyBanHangDB_TailLog.trn'
-WITH RECOVERY, STOPAT = '2026-10-19 10:19:59';
-GO
-
-PRINT N'=========================================================================';
-PRINT N'HOAN THANH KICH BAN DISASTER RECOVERY CHUAN XAC THEO YEU CAU CUA CO THE!';
-PRINT N'=========================================================================';
-GO
+BACKUP LOG @Db TO DISK=@Tail WITH INIT,CHECKSUM,NORECOVERY;
+RESTORE DATABASE @Db FROM DISK=@Full WITH REPLACE,NORECOVERY;
+-- STOPAT must be applied on every log, including when the target falls in an earlier backup.
+RESTORE LOG @Db FROM DISK=@Log WITH NORECOVERY,STOPAT=@Safe;
+RESTORE LOG @Db FROM DISK=@Tail WITH RECOVERY,STOPAT=@Safe;
+USE [$(RECOVERY_DB)];
+IF @Orders<>(SELECT COUNT(*) FROM dbo.DonHang) OR @Lines<>(SELECT COUNT(*) FROM dbo.ChiTietDonHang)
+ OR @Total<>(SELECT SUM(TongTien) FROM dbo.DonHang)
+ BEGIN
+ DECLARE @Error NVARCHAR(2048)=CONCAT(N'Recovery mismatch: expected orders=',@Orders,N', lines=',@Lines,N'; actual orders=',(SELECT COUNT(*) FROM dbo.DonHang),N', lines=',(SELECT COUNT(*) FROM dbo.ChiTietDonHang));
+ THROW 51304,@Error,1;
+ END;
+SELECT DB_NAME() AS RecoveredDatabase,@Safe AS RecoveredTo,@Orders AS OrdersRestored,@Lines AS LinesRestored,@Total AS TotalRestored;
