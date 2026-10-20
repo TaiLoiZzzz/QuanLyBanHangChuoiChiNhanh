@@ -258,14 +258,35 @@ BEGIN
         IF @MaKhoXuat = @MaKhoNhap
             THROW 51006, N'Kho xuất và kho nhập không được trùng nhau!', 1;
 
-        -- TRIỆT TIÊU HOÀN TOÀN DEADLOCK BẰNG KỸ THUẬT LOCK ORDERING (MIN TRƯỚC, MAX SAU)
-        -- Ngăn chặn Wait-For Graph khép kín khi 2 phiên cùng chuyển hàng chéo chiều nhau giữa 2 kho
+        -- =====================================================================
+        -- [SLIDE 10: TRIỆT TIÊU HOÀN TOÀN DEADLOCK BẰNG KỸ THUẬT LOCK ORDERING]
+        -- BỐI CẢNH VẤN ĐỀ:
+        --   Nếu Phiên 1 chuyển Kho 1 -> Kho 2 (khóa 1 trước, đòi khóa 2 sau).
+        --   Nếu Phiên 2 chuyển Kho 2 -> Kho 1 (khóa 2 trước, đòi khóa 1 sau).
+        --   => Hai phiên ghì nhau tạo thành vòng tròn chờ (Wait-For Graph Cycle).
+        --   => SQL Server bắn mã lỗi 1205 (Deadlock Victim) và Rollback 1 phiên!
+        --
+        -- GIẢI PHÁP LOCK ORDERING (MIN TRƯỚC, MAX SAU):
+        --   BẮT BUỘC mọi phiên chuyển hàng, dù đi từ đâu sang đâu, CŨNG PHẢI:
+        --   "Khóa kho có mã số nhỏ trước (@KhoNho), rồi mới khóa kho có mã lớn sau (@KhoLon)".
+        -- =====================================================================
+
+        -- BƯỚC 1: Dùng biểu thức CASE WHEN để tìm số nhỏ hơn và số lớn hơn
+        -- (Dù @MaKhoXuat=1, @MaKhoNhap=2 hay ngược lại thì @KhoNho luôn = 1, @KhoLon luôn = 2)
         DECLARE @KhoNho INT = CASE WHEN @MaKhoXuat < @MaKhoNhap THEN @MaKhoXuat ELSE @MaKhoNhap END;
         DECLARE @KhoLon INT = CASE WHEN @MaKhoXuat < @MaKhoNhap THEN @MaKhoNhap ELSE @MaKhoXuat END;
 
-        -- Khóa trước kho có mã nhỏ hơn, sau đó khóa kho có mã lớn hơn
+        -- BƯỚC 2: Chiếm trước chìa khóa (Pre-locking) theo đúng thứ tự tăng dần
+        -- @DummyLock: Biến tạm bù nhìn để hứng kết quả SELECT, tránh in rác ra màn hình.
+        -- UPDLOCK: Chiếm quyền chuẩn bị sửa, cấm phiên khác nhảy vào tranh cướp.
+        -- HOLDLOCK: Neo giữ ổ khóa này ở cấp độ SERIALIZABLE đến khi COMMIT mới nhả ra.
         DECLARE @DummyLock INT;
+
+        -- 2.1: Luôn luôn khóa kho có mã nhỏ trước!
+        -- Phiên nào đến sau dù chuyển hàng chiều nào cũng bị chặn đứng chờ ngay tại đây.
         SELECT @DummyLock = SoLuongTon FROM TonKho WITH (UPDLOCK, HOLDLOCK) WHERE MaKho = @KhoNho AND MaSP = @MaSP;
+
+        -- 2.2: Sau khi đã nắm chắc chìa khóa kho nhỏ, mới khóa tiếp kho có mã lớn hơn!
         SELECT @DummyLock = SoLuongTon FROM TonKho WITH (UPDLOCK, HOLDLOCK) WHERE MaKho = @KhoLon AND MaSP = @MaSP;
 
         -- Kiểm tra tồn kho thực tế tại kho nguồn xuất hàng
